@@ -18,21 +18,9 @@
       "package": "com.anonymous.VoiceTimer",
       "permissions": [
         "RECORD_AUDIO",
-        "POST_NOTIFICATIONS",
-        "SCHEDULE_EXACT_ALARM",
-        "USE_EXACT_ALARM",
-        "WAKE_LOCK",
-        "VIBRATE"
+        "VIBRATE",
+        "WAKE_LOCK"
       ]
-    },
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/images/icon.png",
-          "color": "#ffffff"
-        }
-      ]
-    ]
+    }
   }
 }
