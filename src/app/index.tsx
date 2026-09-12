@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  Vibration,
   View,
 } from 'react-native';
 import * as Speech from 'expo-speech';
@@ -16,15 +17,19 @@ import {
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+} catch (e) {
+  console.warn('NotificationHandler init error:', e);
+}
 
 type VolumeLevel = '低' | '中' | '高';
 
@@ -41,82 +46,105 @@ export default function HomeScreen() {
   const finishIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 初始化音訊模式與通知頻道
   useEffect(() => {
     (async () => {
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('timer-channel', {
-          name: '倒數計時提醒',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-          sound: 'default',
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: false,
         });
-      }
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
+
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('timer-channel', {
+            name: '倒數計時提醒',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
+            sound: 'default',
+          });
+        }
         await Notifications.requestPermissionsAsync();
+      } catch (e) {
+        console.warn('Init channel error:', e);
       }
     })();
   }, []);
 
-  const playBeep = async (count: number = 2) => {
+  // 播放嗶嗶聲（包含震動輔助）
+  const playBeep = async (times: number = 2) => {
     try {
-      const beepBase64 =
-        'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU' +
-        'AAAAAAA////wAAAP///wAAAP///wAAAP///wAAAP///wAAAP///wAAAP///wAAAP///wAAAP///wAAAP///wAAAP///wAA';
+      Vibration.vibrate([0, 150, 100, 150]);
       const volNum = volume === '低' ? 0.3 : volume === '中' ? 0.7 : 1.0;
-      for (let i = 0; i < count; i++) {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: beepBase64 },
-          { shouldPlay: true, volume: volNum }
-        );
-        setTimeout(() => {
+      
+      const { sound } = await Audio.Sound.createAsync(
+        require('../../../assets/beep.wav'),
+        { shouldPlay: true, volume: volNum }
+      );
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
-        }, 600);
-      }
+        }
+      });
     } catch {
+      // 若音訊受阻，以語音發出清脆嗶聲
       Speech.speak('嗶、嗶', { language: 'zh-TW', rate: 1.5 });
     }
   };
 
+  // 取消背景通知
   const cancelScheduledNotifications = async () => {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch (e) {
+      console.warn('cancel notifications error:', e);
+    }
   };
 
+  // 註冊背景休眠排程通知（完全防護，不觸發系統崩潰）
   const scheduleBackgroundNotifications = async (totalSec: number) => {
-    await cancelScheduledNotifications();
+    try {
+      await cancelScheduledNotifications();
 
-    for (let sec = 300; sec < totalSec; sec += 300) {
-      const triggerSec = totalSec - sec;
-      const remMin = Math.round(sec / 60);
+      // 每 5 分鐘通知
+      for (let sec = 300; sec < totalSec; sec += 300) {
+        const triggerSec = totalSec - sec;
+        const remMin = Math.round(sec / 60);
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'VoiceTimer 倒數提醒',
+            body: `還剩 ${remMin} 分鐘！`,
+            sound: true,
+            channelId: 'timer-channel',
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: triggerSec,
+          },
+        });
+      }
+
+      // 時間結束通知
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'VoiceTimer 倒數提醒',
-          body: `還剩 ${remMin} 分鐘！`,
+          title: 'VoiceTimer 時間到了！',
+          body: '倒數計時已結束，請按停止！',
           sound: true,
           channelId: 'timer-channel',
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: triggerSec,
+          seconds: totalSec,
         },
       });
+    } catch (e) {
+      console.warn('scheduleNotification error:', e);
     }
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'VoiceTimer 時間到了！',
-        body: '倒數計時已結束，請點擊停止！',
-        sound: true,
-        channelId: 'timer-channel',
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: totalSec,
-      },
-    });
   };
 
+  // 語音輸入
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results?.[0]?.transcript ?? '';
     if (!text) return;
@@ -170,9 +198,11 @@ export default function HomeScreen() {
       finishTimeoutRef.current = null;
     }
     Speech.stop();
+    Vibration.cancel();
     cancelScheduledNotifications();
   };
 
+  // 計時核心迴圈
   useEffect(() => {
     if (!isRunning) return;
 
@@ -187,6 +217,7 @@ export default function HomeScreen() {
       const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
       setSecondsLeft(remaining);
 
+      // 歸零觸發
       if (remaining <= 0) {
         clearInterval(timer);
         setIsRunning(false);
@@ -195,6 +226,7 @@ export default function HomeScreen() {
 
         playBeep(3);
 
+        // 結束後重複嗶嗶聲，最多響 1 分鐘（60 秒後自動停止）
         finishIntervalRef.current = setInterval(() => {
           playBeep(2);
         }, 2000);
@@ -208,6 +240,7 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [isRunning]);
 
+  // 每 5 分鐘提醒改為嗶嗶聲
   useEffect(() => {
     if (!isRunning || secondsLeft <= 0) return;
 
