@@ -41,7 +41,6 @@ export default function HomeScreen() {
   const finishIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 初始化通知權限與通知渠道
   useEffect(() => {
     (async () => {
       if (Platform.OS === 'android') {
@@ -60,7 +59,6 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // 嗶嗶聲產生器 (透過 Audio.Sound 播放合成嗶聲)
   const playBeep = async (count: number = 2) => {
     try {
       const beepBase64 =
@@ -77,21 +75,17 @@ export default function HomeScreen() {
         }, 600);
       }
     } catch {
-      // 若音訊模組受限，改以系統語音輔助提醒
       Speech.speak('嗶、嗶', { language: 'zh-TW', rate: 1.5 });
     }
   };
 
-  // 取消背景排程通知
   const cancelScheduledNotifications = async () => {
     await Notifications.cancelAllScheduledNotificationsAsync();
   };
 
-  // 註冊背景休眠通知（包含每 5 分鐘提醒與時間歸零提醒）
   const scheduleBackgroundNotifications = async (totalSec: number) => {
     await cancelScheduledNotifications();
 
-    // 1. 每 5 分鐘背景休眠提醒
     for (let sec = 300; sec < totalSec; sec += 300) {
       const triggerSec = totalSec - sec;
       const remMin = Math.round(sec / 60);
@@ -109,7 +103,6 @@ export default function HomeScreen() {
       });
     }
 
-    // 2. 時間到了（0 分鐘）背景休眠提醒
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'VoiceTimer 時間到了！',
@@ -124,7 +117,6 @@ export default function HomeScreen() {
     });
   };
 
-  // 語音辨識事件
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results?.[0]?.transcript ?? '';
     if (!text) return;
@@ -168,7 +160,6 @@ export default function HomeScreen() {
   useSpeechRecognitionEvent('end', () => setIsListening(false));
   useSpeechRecognitionEvent('error', () => setIsListening(false));
 
-  // 清除結束後的響鈴
   const stopFinishedSound = () => {
     if (finishIntervalRef.current) {
       clearInterval(finishIntervalRef.current);
@@ -182,7 +173,6 @@ export default function HomeScreen() {
     cancelScheduledNotifications();
   };
 
-  // 計時器主迴圈
   useEffect(() => {
     if (!isRunning) return;
 
@@ -197,17 +187,14 @@ export default function HomeScreen() {
       const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
       setSecondsLeft(remaining);
 
-      // 時間歸零
       if (remaining <= 0) {
         clearInterval(timer);
         setIsRunning(false);
         setIsFinished(true);
         endTimeRef.current = null;
 
-        // 立即嗶嗶聲響鈴
         playBeep(3);
 
-        // 結束後每 2 秒嗶一聲，持續約 1 分鐘（60秒後自動停止）
         finishIntervalRef.current = setInterval(() => {
           playBeep(2);
         }, 2000);
@@ -221,7 +208,6 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [isRunning]);
 
-  // 每 5 分鐘發出嗶嗶聲
   useEffect(() => {
     if (!isRunning || secondsLeft <= 0) return;
 
@@ -236,7 +222,6 @@ export default function HomeScreen() {
     }
   }, [secondsLeft, isRunning]);
 
-  // 語音輸入
   const startListening = async () => {
     if (isRunning || isFinished) return;
     if (Platform.OS !== 'android') {
@@ -261,7 +246,6 @@ export default function HomeScreen() {
     }
   };
 
-  // 開始 / 暫停 / 停止
   const toggleTimer = async () => {
     if (isFinished) {
       stopFinishedSound();
@@ -284,7 +268,6 @@ export default function HomeScreen() {
       return;
     }
 
-    // 開始倒數並排程背景通知
     endTimeRef.current = Date.now() + secondsLeft * 1000;
     setIsRunning(true);
     scheduleBackgroundNotifications(secondsLeft);
@@ -314,7 +297,6 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        {/* 大型時間顯示區 */}
         <TouchableOpacity
           style={styles.timerArea}
           activeOpacity={0.8}
@@ -323,7 +305,6 @@ export default function HomeScreen() {
           <Text style={styles.timer}>{formatTime()}</Text>
         </TouchableOpacity>
 
-        {/* 語音輸入按鈕（寬度高度與啟動鍵完全一致） */}
         {!isRunning && !isFinished && (
           <>
             <TouchableOpacity
@@ -336,7 +317,6 @@ export default function HomeScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* 音量選擇 */}
             <View style={styles.volumeRow}>
               {volumeOptions.map((item) => (
                 <TouchableOpacity
@@ -361,7 +341,6 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* 開始 / 暫停 / 停止 按鈕 */}
         <TouchableOpacity
           style={[styles.mainButton, isFinished && styles.stopButton]}
           onPress={toggleTimer}
