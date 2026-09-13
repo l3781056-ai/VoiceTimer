@@ -10,11 +10,23 @@ import {
   View,
 } from 'react-native';
 import * as Speech from 'expo-speech';
+import * as Notifications from 'expo-notifications';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+
+// 配置系統通知音效與彈出樣式
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 type VolumeLevel = '低' | '中' | '高';
 
@@ -31,28 +43,102 @@ export default function HomeScreen() {
   const finishIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 播放嗶嗶聲（高頻率嗶聲 + 震動）
-  const playBeep = (count: number = 2) => {
-    try {
-      Vibration.vibrate([0, 150, 100, 150]);
-      const volNum = volume === '低' ? 0.3 : volume === '中' ? 0.7 : 1.0;
-
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-          Speech.speak('嗶', {
-            language: 'zh-TW',
-            pitch: 1.8,
-            rate: 1.6,
-            volume: volNum,
+  // 初始化 Android 系統通知音效頻道（使用系統預設鬧鐘/通知鈴聲）
+  useEffect(() => {
+    (async () => {
+      try {
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('system-alarm', {
+            name: '計時提醒鈴聲',
+            importance: Notifications.AndroidImportance.MAX,
+            sound: 'default', // Android 系統內建標準鈴聲
+            vibrationPattern: [0, 400, 200, 400],
+            enableVibrate: true,
+            bypassDnd: true,
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
           });
-        }, i * 280);
+        }
+        const perm = await Notifications.getPermissionsAsync();
+        if (perm.status !== 'granted') {
+          await Notifications.requestPermissionsAsync();
+        }
+      } catch (err) {
+        console.warn('Channel init error:', err);
       }
+    })();
+  }, []);
+
+  // 播放 Android 系統內建標準提示鈴聲
+  const playSystemBeep = async () => {
+    try {
+      Vibration.vibrate([0, 300, 150, 300]);
+      // 立即排程 1 毫秒後的本地即時通知，觸發 Android 原生系統鈴聲
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '倒數提醒',
+          body: '嗶！時間提醒',
+          sound: 'default',
+          channelId: 'system-alarm',
+        },
+        trigger: null, // null 代表立即發送
+      });
     } catch (e) {
-      console.warn('Beep error:', e);
+      console.warn('Play ringtone error:', e);
     }
   };
 
-  // 語音辨識事件
+  // 取消背景排程
+  const cancelScheduledNotifications = async () => {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch (e) {
+      console.warn('Cancel error:', e);
+    }
+  };
+
+  // 註冊背景休眠通知（5 分鐘與歸零）
+  const scheduleTimerNotifications = async (totalSec: number) => {
+    await cancelScheduledNotifications();
+
+    try {
+      // 1. 每 5 分鐘休眠提醒
+      for (let secRemaining = 300; secRemaining < totalSec; secRemaining += 300) {
+        const triggerDelay = totalSec - secRemaining;
+        const minLeft = Math.round(secRemaining / 60);
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'VoiceTimer 倒數提醒',
+            body: `還剩 ${minLeft} 分鐘`,
+            sound: 'default',
+            channelId: 'system-alarm',
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: triggerDelay,
+          },
+        });
+      }
+
+      // 2. 時間到了休眠提醒
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'VoiceTimer 時間到！',
+          body: '倒數已結束，請點擊停止',
+          sound: 'default',
+          channelId: 'system-alarm',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: totalSec,
+        },
+      });
+    } catch (e) {
+      console.warn('schedule error:', e);
+    }
+  };
+
+  // 語音輸入：簡潔只報出數字
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results?.[0]?.transcript ?? '';
     if (!text) return;
@@ -62,20 +148,17 @@ export default function HomeScreen() {
       /(\d+(?:\.\d+)?)\s*(分鐘|分|min|mins|minute|minutes)/i
     );
     if (!match) {
-      Speech.speak('請說例如，倒數 10 分鐘，或倒數 30 分鐘。', {
-        language: 'zh-TW',
-        rate: 0.9,
-      });
+      Speech.speak('請說倒數幾分鐘。', { language: 'zh-TW', rate: 1.0 });
       return;
     }
 
     const value = Math.floor(Number(match[1]));
     if (value < 1) {
-      Speech.speak('倒數時間至少要一分鐘。', { language: 'zh-TW', rate: 0.9 });
+      Speech.speak('至少一分鐘。', { language: 'zh-TW', rate: 1.0 });
       return;
     }
     if (value > 180) {
-      Speech.speak('時間不能超過一百八十分鐘。', { language: 'zh-TW', rate: 0.9 });
+      Speech.speak('最多一百八十分鐘。', { language: 'zh-TW', rate: 1.0 });
       return;
     }
 
@@ -86,9 +169,10 @@ export default function HomeScreen() {
     endTimeRef.current = null;
     lastReminderRef.current = value;
 
-    Speech.speak(`好的，已設定倒數 ${value} 分鐘。`, {
+    // 【修改點】：極簡報時，只報出時間（例如：「10 分鐘。」）
+    Speech.speak(`${value} 分鐘。`, {
       language: 'zh-TW',
-      rate: 0.9,
+      rate: 1.0,
     });
   });
 
@@ -96,7 +180,7 @@ export default function HomeScreen() {
   useSpeechRecognitionEvent('end', () => setIsListening(false));
   useSpeechRecognitionEvent('error', () => setIsListening(false));
 
-  // 清除響鈴與解除防休眠
+  // 停止結束後的響鈴
   const stopFinishedSound = () => {
     if (finishIntervalRef.current) {
       clearInterval(finishIntervalRef.current);
@@ -109,13 +193,13 @@ export default function HomeScreen() {
     Speech.stop();
     Vibration.cancel();
     deactivateKeepAwake();
+    cancelScheduledNotifications();
   };
 
-  // 計時核心（基於時間戳校準）
+  // 計時主迴圈
   useEffect(() => {
     if (!isRunning) return;
 
-    // 啟動計時時保持螢幕常亮防休眠
     activateKeepAwakeAsync();
 
     if (endTimeRef.current === null) {
@@ -129,18 +213,20 @@ export default function HomeScreen() {
       const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
       setSecondsLeft(remaining);
 
-      // 時間歸零
+      // 時間到了
       if (remaining <= 0) {
         clearInterval(timer);
         setIsRunning(false);
         setIsFinished(true);
         endTimeRef.current = null;
 
-        playBeep(3);
+        // 簡短報「時間到」並響 Android 系統內建鈴聲
+        Speech.speak('時間到', { language: 'zh-TW', rate: 1.0 });
+        playSystemBeep();
 
-        // 每 3 秒嗶一次，持續約 1 分鐘（60 秒後自動停止）
+        // 結束後每 3 秒響一次系統鈴聲，響滿 1 分鐘（60秒自動關閉）
         finishIntervalRef.current = setInterval(() => {
-          playBeep(2);
+          playSystemBeep();
         }, 3000);
 
         finishTimeoutRef.current = setTimeout(() => {
@@ -152,7 +238,7 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [isRunning]);
 
-  // 每 5 分鐘發出嗶嗶聲提醒
+  // 前台每 5 分鐘發出 Android 系統鈴聲提醒
   useEffect(() => {
     if (!isRunning || secondsLeft <= 0) return;
 
@@ -163,7 +249,7 @@ export default function HomeScreen() {
       lastReminderRef.current !== remainingMinutes
     ) {
       lastReminderRef.current = remainingMinutes;
-      playBeep(2);
+      playSystemBeep();
     }
   }, [secondsLeft, isRunning]);
 
@@ -178,7 +264,7 @@ export default function HomeScreen() {
       const permission =
         await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('需要麥克風權限', '請允許 VoiceTimer 使用麥克風。');
+        Alert.alert('需要麥克風權限', '請允許使用麥克風。');
         return;
       }
       ExpoSpeechRecognitionModule.start({
@@ -191,7 +277,7 @@ export default function HomeScreen() {
     }
   };
 
-  const toggleTimer = () => {
+  const toggleTimer = async () => {
     if (isFinished) {
       stopFinishedSound();
       setIsFinished(false);
@@ -202,7 +288,7 @@ export default function HomeScreen() {
     }
 
     if (secondsLeft <= 0) {
-      Speech.speak('請先設定倒數時間。', { language: 'zh-TW', rate: 0.9 });
+      Speech.speak('請設定時間。', { language: 'zh-TW', rate: 1.0 });
       return;
     }
 
@@ -210,11 +296,13 @@ export default function HomeScreen() {
       setIsRunning(false);
       endTimeRef.current = null;
       deactivateKeepAwake();
+      cancelScheduledNotifications();
       return;
     }
 
     endTimeRef.current = Date.now() + secondsLeft * 1000;
     setIsRunning(true);
+    await scheduleTimerNotifications(secondsLeft);
   };
 
   const announceRemainingTime = () => {
@@ -222,11 +310,11 @@ export default function HomeScreen() {
     const m = Math.floor(secondsLeft / 60);
     const s = secondsLeft % 60;
     if (m > 0 && s > 0) {
-      Speech.speak(`目前剩餘 ${m} 分 ${s} 秒。`, { language: 'zh-TW', rate: 0.9 });
+      Speech.speak(`${m} 分 ${s} 秒。`, { language: 'zh-TW', rate: 1.0 });
     } else if (m > 0) {
-      Speech.speak(`目前剩餘 ${m} 分鐘。`, { language: 'zh-TW', rate: 0.9 });
+      Speech.speak(`${m} 分鐘。`, { language: 'zh-TW', rate: 1.0 });
     } else {
-      Speech.speak(`目前剩餘 ${s} 秒。`, { language: 'zh-TW', rate: 0.9 });
+      Speech.speak(`${s} 秒。`, { language: 'zh-TW', rate: 1.0 });
     }
   };
 
@@ -241,7 +329,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        {/* 大型時間顯示 */}
+        {/* 大型時間顯示區 */}
         <TouchableOpacity
           style={styles.timerArea}
           activeOpacity={0.8}
@@ -287,7 +375,7 @@ export default function HomeScreen() {
           </>
         )}
 
-        {/* 主動作鍵：開始 / 暫停 / 停止 */}
+        {/* 主操作鍵：開始 / 暫停 / 停止 */}
         <TouchableOpacity
           style={[styles.mainButton, isFinished && styles.stopButton]}
           onPress={toggleTimer}
