@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Standalone Android APK
 
 on:
   push:
@@ -33,11 +33,11 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
 
-      - name: Build Debug APK (ARM64 only)
-        run: cd android && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --stacktrace
+      - name: Build Standalone Release APK
+        run: cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: app-release
+          path: android/app/build/outputs/apk/release/*.apk
