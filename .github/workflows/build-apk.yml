@@ -33,8 +33,8 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
 
-      - name: Build Debug APK
-        run: cd android && ./gradlew assembleDebug
+      - name: Build Debug APK (ARM64 only)
+        run: cd android && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
