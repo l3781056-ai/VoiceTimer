@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  NativeModules,
   Platform,
   SafeAreaView,
   StyleSheet,
@@ -10,6 +11,8 @@ import {
   View,
 } from 'react-native';
 import * as Speech from 'expo-speech';
+
+const { VoiceTimerModule } = NativeModules;
 import * as Notifications from 'expo-notifications';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
@@ -292,6 +295,13 @@ export default function HomeScreen() {
       setSecondsLeft(0);
       setMinutes(null);
       lastReminderRef.current = null;
+
+      try {
+        VoiceTimerModule?.stopTimer();
+      } catch (e) {
+        console.log('VoiceTimerModule stop error:', e);
+      }
+
       return;
     }
 
@@ -305,12 +315,26 @@ export default function HomeScreen() {
       endTimeRef.current = null;
       deactivateKeepAwake();
       cancelScheduledNotifications();
+
+      try {
+        VoiceTimerModule?.stopTimer();
+      } catch (e) {
+        console.log('VoiceTimerModule stop error:', e);
+      }
+
       return;
     }
 
     endTimeRef.current = Date.now() + secondsLeft * 1000;
     setIsRunning(true);
-    await scheduleTimerNotifications(secondsLeft);
+
+    try {
+      VoiceTimerModule?.startTimer(secondsLeft * 1000);
+    } catch (e) {
+      console.log('VoiceTimerModule start error:', e);
+    }
+
+    // 背景提醒改由 Android 原生 AlarmManager 負責
   };
 
   const announceRemainingTime = () => {
