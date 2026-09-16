@@ -22,7 +22,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup Java JDK
+      # 同時安裝 Java 17 提供給第三方套件 (如 react-native-gesture-handler)
+      - name: Setup Java 17 (for Toolchain)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 安裝 Java 21 並設為專案預設
+      - name: Setup Java 21 (Default)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -33,9 +41,6 @@ jobs:
 
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
-
-      - name: Enable Gradle Toolchain Auto-Download
-        run: echo "org.gradle.java.installations.auto-download=true" >> android/gradle.properties
 
       - name: Build Standalone Release APK
         env:
