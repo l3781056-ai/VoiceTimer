@@ -22,14 +22,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 安裝 Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 安裝 Java 21 並設為預設 JAVA_HOME
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
@@ -42,7 +40,6 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
 
-      # 設定 Toolchain 路徑與加大 Gradle 記憶體 (4GB)
       - name: Configure Gradle JVM and Memory
         run: |
           echo "org.gradle.java.installations.paths=/usr/lib/jvm/temurin-17-jdk-amd64,/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.*" >> android/gradle.properties
@@ -56,9 +53,19 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
 
+      - name: Locate Built APK and AAB
+        run: |
+          echo "=== 搜尋所有 APK 檔案 ==="
+          find android -type f -name "*.apk"
+          echo "=== 搜尋所有 AAB 檔案 ==="
+          find android -type f -name "*.aab"
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: "**/*.a*b*"
+          path: |
+            android/**/*.apk
+            android/**/*.aab
+          if-no-files-found: error
           retention-days: 7
