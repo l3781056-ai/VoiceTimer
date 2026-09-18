@@ -85,7 +85,7 @@ android {
     ndkVersion rootProject.ext.ndkVersion
 
     buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk 36
+    compileSdk 34
 
     namespace 'com.anonymous.VoiceTimer'
     defaultConfig {

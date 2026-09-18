@@ -93,101 +93,6 @@ export default function HomeScreen() {
     }
   };
 
-  // 取消所有排程
-  const cancelScheduledNotifications = async () => {
-    try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-    } catch (e) {
-      console.warn('Cancel notifications error:', e);
-    }
-  };
-
-  // 註冊鎖屏休眠排程通知
-  const scheduleTimerNotifications = async (totalSec: number) => {
-    await cancelScheduledNotifications();
-    const now = Date.now();
-
-    try {
-      // 每 5 分鐘休眠喚醒提醒
-      for (let secRemaining = 300; secRemaining < totalSec; secRemaining += 300) {
-        const triggerSec = totalSec - secRemaining;
-        const triggerDate = new Date(now + triggerSec * 1000);
-        const minLeft = Math.round(secRemaining / 60);
-
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '⏰ 倒數提醒',
-            body: `還剩下 ${minLeft} 分鐘`,
-            sound: 'default',
-            channelId: 'system-alarm-channel',
-            priority: Notifications.AndroidNotificationPriority.MAX,
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: triggerDate,
-          },
-        });
-      }
-
-      // 倒數歸零（0 分鐘）鬧鐘喚醒提醒
-      const finishDate = new Date(now + totalSec * 1000);
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '🚨 時間到了！',
-          body: '倒數時間到，請按停止',
-          sound: 'default',
-          channelId: 'system-alarm-channel',
-          priority: Notifications.AndroidNotificationPriority.MAX,
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: finishDate,
-        },
-      });
-    } catch (e) {
-      console.warn('Schedule error:', e);
-    }
-  };
-
-  // 語音辨識：簡潔只報時間數字
-  useSpeechRecognitionEvent('result', (event) => {
-    const text = event.results?.[0]?.transcript ?? '';
-    if (!text) return;
-    setIsListening(false);
-
-    const match = text.match(
-      /(\d+(?:\.\d+)?)\s*(分鐘|分|min|mins|minute|minutes)/i
-    );
-    if (!match) {
-      speakNormal('請說倒數幾分鐘');
-      return;
-    }
-
-    const value = Math.floor(Number(match[1]));
-    if (value < 1) {
-      speakNormal('至少一分鐘');
-      return;
-    }
-    if (value > 180) {
-      speakNormal('最多一百八十分鐘');
-      return;
-    }
-
-    setMinutes(value);
-    setSecondsLeft(value * 60);
-    setIsRunning(false);
-    setIsFinished(false);
-    endTimeRef.current = null;
-    lastReminderRef.current = value;
-
-    // 簡潔報時：例如「10 分鐘」
-    speakNormal(`${value} 分鐘`);
-  });
-
-  useSpeechRecognitionEvent('start', () => setIsListening(true));
-  useSpeechRecognitionEvent('end', () => setIsListening(false));
-  useSpeechRecognitionEvent('error', () => setIsListening(false));
-
   // 停止結束提醒
   const stopFinishedSound = () => {
     if (finishIntervalRef.current) {
@@ -201,7 +106,6 @@ export default function HomeScreen() {
     Speech.stop();
     Vibration.cancel();
     deactivateKeepAwake();
-    cancelScheduledNotifications();
   };
 
   // 前台計時器迴圈
@@ -314,7 +218,6 @@ export default function HomeScreen() {
       setIsRunning(false);
       endTimeRef.current = null;
       deactivateKeepAwake();
-      cancelScheduledNotifications();
 
       try {
         VoiceTimerModule?.stopTimer();
