@@ -46,16 +46,46 @@ public class VoiceTimerBackgroundService extends Service {
         String action = intent.getAction();
 
         // =========================
+        // 使用者主動停止
+        // =========================
+        if (VoiceTimerAlarmReceiver.ACTION_STOP.equals(action)) {
+
+            if (countDownTimer != null) {
+                countDownTimer.cancel();
+                countDownTimer = null;
+            }
+
+            cancelReminderAlarms();
+            stopAlert();
+
+            stopForeground(true);
+            stopSelf();
+
+            return START_NOT_STICKY;
+        }
+
+        // =========================
         // 5 分鐘提醒
         // =========================
         if (VoiceTimerAlarmReceiver.ACTION_REMINDER.equals(action)) {
 
+            int remainingMinutes =
+                    intent.getIntExtra("remainingMinutes", 5);
+
             startForeground(
                     NOTIFICATION_ID,
-                    createNotification("VoiceTimer：5 分鐘提醒")
+                    createNotification(
+                            "VoiceTimer：" +
+                            remainingMinutes +
+                            " 分鐘提醒"
+                    )
             );
 
-            playAlarmFor60Seconds("還剩 5 分鐘");
+            playAlarmFor60Seconds(
+                    "還剩 " +
+                    remainingMinutes +
+                    " 分鐘"
+            );
 
             return START_NOT_STICKY;
         }
@@ -204,20 +234,7 @@ public class VoiceTimerBackgroundService extends Service {
         long fiveMinutes =
                 5 * 60 * 1000L;
 
-        /*
-         * 例如：
-         * 20 分鐘
-         * → 5 分鐘提醒
-         * → 10 分鐘提醒
-         * → 15 分鐘提醒
-         *
-         * 實際觸發時間：
-         * 15 分鐘後
-         * 10 分鐘後
-         * 5 分鐘後
-         */
-
-        // 以「剩餘時間」計算提醒點，確保提醒內容與實際時間一致。
+        // 以「剩餘時間」計算提醒點。
         // 例如 20 分鐘：15、10、5 分鐘剩餘時各提醒一次。
         int reminderIndex = 1;
 
@@ -325,7 +342,6 @@ public class VoiceTimerBackgroundService extends Service {
             return;
         }
 
-        // 取消可能存在的 5 分鐘提醒
         for (int i = 1; i <= 100; i++) {
 
             Intent intent =
@@ -350,7 +366,6 @@ public class VoiceTimerBackgroundService extends Service {
             alarmManager.cancel(pendingIntent);
         }
 
-        // 取消結束 Alarm
         Intent finishIntent =
                 new Intent(
                         this,
