@@ -67,7 +67,7 @@ jobs:
 
           echo "=== Zipalign APK ==="
           SDK_BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
-          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$INPUT" "$ALIGNED"
+          "$SDK_BUILD_TOOLS/zipalign" -P 16 -f -v 4 "$INPUT" "$ALIGNED"
 
           echo "=== 使用 debug.keystore 簽署 APK ==="
           "$SDK_BUILD_TOOLS/apksigner" sign \
@@ -82,7 +82,7 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL"
 
           echo "=== 驗證 Zipalign ==="
-          "$SDK_BUILD_TOOLS/zipalign" -c -v 4 "$FINAL"
+          "$SDK_BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$FINAL"
 
           echo "=== 最終 APK ==="
           ls -lh "$FINAL"
