@@ -217,40 +217,38 @@ public class VoiceTimerBackgroundService extends Service {
          * 5 分鐘後
          */
 
-        long elapsed = fiveMinutes;
+        // 以「剩餘時間」計算提醒點，確保提醒內容與實際時間一致。
+        // 例如 20 分鐘：15、10、5 分鐘剩餘時各提醒一次。
         int reminderIndex = 1;
 
-        while (elapsed < durationMillis) {
+        for (long remaining = fiveMinutes;
+             remaining < durationMillis;
+             remaining += fiveMinutes) {
 
             long triggerTime =
-                    System.currentTimeMillis()
-                            + elapsed;
+                    endTimeMillis - remaining;
 
             scheduleAlarm(
                     alarmManager,
                     triggerTime,
                     VoiceTimerAlarmReceiver.ACTION_REMINDER,
-                    REMINDER_BASE_REQUEST_CODE
-                            + reminderIndex
+                    REMINDER_BASE_REQUEST_CODE + reminderIndex,
+                    (int) (remaining / 60000L)
             );
 
-            elapsed += fiveMinutes;
             reminderIndex++;
+
+            if (reminderIndex > 100) {
+                break;
+            }
         }
-
-        // =========================
-        // 最終結束 Alarm
-        // =========================
-
-        long finishTime =
-                System.currentTimeMillis()
-                        + durationMillis;
 
         scheduleAlarm(
                 alarmManager,
-                finishTime,
+                endTimeMillis,
                 VoiceTimerAlarmReceiver.ACTION_FINISH,
-                FINISH_REQUEST_CODE
+                FINISH_REQUEST_CODE,
+                0
         );
     }
 
@@ -258,7 +256,8 @@ public class VoiceTimerBackgroundService extends Service {
             AlarmManager alarmManager,
             long triggerTime,
             String action,
-            int requestCode
+            int requestCode,
+            int remainingMinutes
     ) {
 
         Intent intent =
@@ -268,6 +267,11 @@ public class VoiceTimerBackgroundService extends Service {
                 );
 
         intent.setAction(action);
+
+        intent.putExtra(
+                "remainingMinutes",
+                remainingMinutes
+        );
 
         PendingIntent pendingIntent =
                 PendingIntent.getBroadcast(
@@ -516,8 +520,6 @@ public class VoiceTimerBackgroundService extends Service {
             alertTimer.cancel();
             alertTimer = null;
         }
-
-        cancelReminderAlarms();
 
         stopAlarm();
 
