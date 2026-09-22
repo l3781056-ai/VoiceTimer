@@ -45,13 +45,13 @@ jobs:
           echo "org.gradle.java.installations.paths=/usr/lib/jvm/temurin-17-jdk-amd64,/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.*" >> android/gradle.properties
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
 
-      - name: Build Standalone Release APK
+      - name: Build Standalone Debug APK
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxMetaspaceSize=1024m'"
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Locate Built APK and AAB
         run: |
@@ -63,7 +63,7 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: app-debug
           path: |
             android/**/*.apk
             android/**/*.aab
