@@ -53,19 +53,44 @@ jobs:
           cd android
           ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Locate Built APK and AAB
+      - name: Prepare installable Debug APK
         run: |
-          echo "=== 搜尋所有 APK 檔案 ==="
-          find android -type f -name "*.apk"
-          echo "=== 搜尋所有 AAB 檔案 ==="
-          find android -type f -name "*.aab"
+          set -e
+          INPUT="android/app/build/intermediates/apk/debug/app-debug.apk"
+          ALIGNED="android/app/build/outputs/apk/debug/app-debug-aligned.apk"
+          FINAL="android/app/build/outputs/apk/debug/app-debug.apk"
+          mkdir -p android/app/build/outputs/apk/debug
+
+          test -f "$INPUT"
+          echo "=== 原始 APK ==="
+          ls -lh "$INPUT"
+
+          echo "=== Zipalign APK ==="
+          SDK_BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$INPUT" "$ALIGNED"
+
+          echo "=== 使用 debug.keystore 簽署 APK ==="
+          "$SDK_BUILD_TOOLS/apksigner" sign \
+            --ks android/app/debug.keystore \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          echo "=== 驗證 APK 簽章 ==="
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL"
+
+          echo "=== 驗證 Zipalign ==="
+          "$SDK_BUILD_TOOLS/zipalign" -c -v 4 "$FINAL"
+
+          echo "=== 最終 APK ==="
+          ls -lh "$FINAL"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: |
-            android/**/*.apk
-            android/**/*.aab
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
