@@ -17,6 +17,9 @@ import androidx.core.app.NotificationCompat;
 
 public class VoiceTimerAlarmReceiver extends BroadcastReceiver {
 
+    public static final String ACTION_START =
+            "com.anonymous.VoiceTimer.START";
+
     public static final String ACTION_REMINDER =
             "com.anonymous.VoiceTimer.REMINDER";
 
@@ -42,101 +45,24 @@ public class VoiceTimerAlarmReceiver extends BroadcastReceiver {
             return;
         }
 
-        int remainingMinutes =
-                intent.getIntExtra(
-                        "remainingMinutes",
-                        0
+        Intent serviceIntent =
+                new Intent(
+                        context,
+                        VoiceTimerBackgroundService.class
                 );
 
-        createNotificationChannel(context);
+        serviceIntent.setAction(action);
 
-        NotificationManager notificationManager =
-                (NotificationManager)
-                        context.getSystemService(
-                                Context.NOTIFICATION_SERVICE
-                        );
-
-        if (notificationManager == null) {
-            return;
-        }
-
-        String title;
-        String message;
-
-        if (ACTION_FINISH.equals(action)) {
-
-            title = "⏰ VoiceTimer";
-            message = "倒數時間到了！";
-
-        } else {
-
-            title = "⏰ VoiceTimer 倒數提醒";
-
-            message =
-                    "還剩下 "
-                            + remainingMinutes
-                            + " 分鐘";
-        }
-
-        Intent openIntent =
-                context.getPackageManager()
-                        .getLaunchIntentForPackage(
-                                context.getPackageName()
-                        );
-
-        PendingIntent openPendingIntent = null;
-
-        if (openIntent != null) {
-
-            openIntent.setFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_CLEAR_TOP
-            );
-
-            openPendingIntent =
-                    PendingIntent.getActivity(
-                            context,
-                            6000,
-                            openIntent,
-                            PendingIntent.FLAG_UPDATE_CURRENT
-                                    | PendingIntent.FLAG_IMMUTABLE
-                    );
-        }
-
-        NotificationCompat.Builder builder =
-                new NotificationCompat.Builder(
-                        context,
-                        CHANNEL_ID
-                )
-                        .setSmallIcon(
-                                android.R.drawable.ic_lock_idle_alarm
-                        )
-                        .setContentTitle(title)
-                        .setContentText(message)
-                        .setPriority(
-                                NotificationCompat.PRIORITY_MAX
-                        )
-                        .setCategory(
-                                NotificationCompat.CATEGORY_ALARM
-                        )
-                        .setAutoCancel(true)
-                        .setVisibility(
-                                NotificationCompat.VISIBILITY_PUBLIC
-                        )
-                        .setDefaults(
-                                NotificationCompat.DEFAULT_ALL
-                        );
-
-        if (openPendingIntent != null) {
-            builder.setContentIntent(openPendingIntent);
-        }
-
-        notificationManager.notify(
-                NOTIFICATION_ID,
-                builder.build()
+        serviceIntent.putExtra(
+                "remainingMinutes",
+                intent.getIntExtra("remainingMinutes", 0)
         );
 
-        vibrate(context);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent);
+        } else {
+            context.startService(serviceIntent);
+        }
     }
 
     private void createNotificationChannel(Context context) {
