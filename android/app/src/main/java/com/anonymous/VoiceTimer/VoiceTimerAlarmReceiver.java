@@ -20,6 +20,9 @@ public class VoiceTimerAlarmReceiver extends BroadcastReceiver {
     public static final String ACTION_START =
             "com.anonymous.VoiceTimer.START";
 
+    public static final String ACTION_STOP =
+            "com.anonymous.VoiceTimer.STOP";
+
     public static final String ACTION_REMINDER =
             "com.anonymous.VoiceTimer.REMINDER";
 
