@@ -84,7 +84,15 @@ public class VoiceTimerModule extends ReactContextBaseJavaModule {
                         VoiceTimerBackgroundService.class
                 );
 
-        reactContext.stopService(serviceIntent);
+        serviceIntent.setAction(
+                VoiceTimerAlarmReceiver.ACTION_STOP
+        );
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            reactContext.startForegroundService(serviceIntent);
+        } else {
+            reactContext.startService(serviceIntent);
+        }
     }
 
     private void openExactAlarmSettings() {
