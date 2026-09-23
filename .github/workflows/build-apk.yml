@@ -78,11 +78,11 @@ jobs:
           echo "=== Verify 4-byte alignment ==="
           "$ZIPALIGN" -c -v 4 "$FINAL"
 
-          echo "=== Verify 16 KB alignment ==="
+          echo "=== Verify 16 KB native-library alignment ==="
           "$ZIPALIGN" -c -P 16 -v 4 "$FINAL"
 
-          echo "=== Verify resources.arsc ==="
-          python3 -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); i=z.getinfo("resources.arsc"); o=i.header_offset+30+len(i.filename.encode("utf-8"))+len(i.extra); print("resources.arsc compression=",i.compress_type,"offset=",o,"offset%4=",o%4); assert i.compress_type==zipfile.ZIP_STORED and o%4==0' "$FINAL"
+          echo "=== Verify resources.arsc is uncompressed ==="
+          python3 -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); i=z.getinfo("resources.arsc"); print("resources.arsc compression=",i.compress_type); assert i.compress_type==zipfile.ZIP_STORED' "$FINAL"
 
           echo "=== APK info ==="
           "$SDK_BUILD_TOOLS/aapt2" dump badging "$FINAL" | grep -E "package:|sdkVersion:|targetSdkVersion:"
