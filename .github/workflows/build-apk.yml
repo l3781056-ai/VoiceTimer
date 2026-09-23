@@ -55,36 +55,40 @@ jobs:
 
       - name: Prepare installable Debug APK
         run: |
-          set -e
+          set -euo pipefail
           INPUT="android/app/build/intermediates/apk/debug/app-debug.apk"
           ALIGNED="android/app/build/outputs/apk/debug/app-debug-aligned.apk"
           FINAL="android/app/build/outputs/apk/debug/app-debug.apk"
           mkdir -p android/app/build/outputs/apk/debug
-
           test -f "$INPUT"
-          echo "=== 原始 APK ==="
-          ls -lh "$INPUT"
 
-          echo "=== Zipalign APK ==="
           SDK_BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
-          "$SDK_BUILD_TOOLS/zipalign" -P 16 -f -v 4 "$INPUT" "$ALIGNED"
+          ZIPALIGN="$SDK_BUILD_TOOLS/zipalign"
+          APKSIGNER="$SDK_BUILD_TOOLS/apksigner"
 
-          echo "=== 使用 debug.keystore 簽署 APK ==="
-          "$SDK_BUILD_TOOLS/apksigner" sign \
-            --ks android/app/debug.keystore \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --ks-key-alias androiddebugkey \
-            --out "$FINAL" \
-            "$ALIGNED"
+          echo "=== Zipalign 16 KB ==="
+          "$ZIPALIGN" -P 16 -f -v 4 "$INPUT" "$ALIGNED"
 
-          echo "=== 驗證 APK 簽章 ==="
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL"
+          echo "=== Sign APK ==="
+          "$APKSIGNER" sign --ks android/app/debug.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "$FINAL" "$ALIGNED"
 
-          echo "=== 驗證 Zipalign ==="
-          "$SDK_BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$FINAL"
+          echo "=== Verify signature ==="
+          "$APKSIGNER" verify --verbose --print-certs "$FINAL"
 
-          echo "=== 最終 APK ==="
+          echo "=== Verify 4-byte alignment ==="
+          "$ZIPALIGN" -c -v 4 "$FINAL"
+
+          echo "=== Verify 16 KB alignment ==="
+          "$ZIPALIGN" -c -P 16 -v 4 "$FINAL"
+
+          echo "=== Verify resources.arsc ==="
+          python3 -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); i=z.getinfo("resources.arsc"); o=i.header_offset+30+len(i.filename.encode("utf-8"))+len(i.extra); print("resources.arsc compression=",i.compress_type,"offset=",o,"offset%4=",o%4); assert i.compress_type==zipfile.ZIP_STORED and o%4==0' "$FINAL"
+
+          echo "=== APK info ==="
+          "$SDK_BUILD_TOOLS/aapt2" dump badging "$FINAL" | grep -E "package:|sdkVersion:|targetSdkVersion:"
+
+          echo "=== SHA256 ==="
+          sha256sum "$FINAL"
           ls -lh "$FINAL"
 
       - name: Upload APK Artifact
