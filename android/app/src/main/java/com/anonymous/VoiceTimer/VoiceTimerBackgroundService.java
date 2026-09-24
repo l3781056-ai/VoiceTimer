@@ -10,10 +10,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.speech.tts.TextToSpeech;
 import android.net.Uri;
 import android.os.Build;
 import android.os.CountDownTimer;
 import android.os.IBinder;
+import java.util.Locale;
 
 public class VoiceTimerBackgroundService extends Service {
 
@@ -26,6 +28,8 @@ public class VoiceTimerBackgroundService extends Service {
     private CountDownTimer countDownTimer;
     private CountDownTimer alertTimer;
     private MediaPlayer alarmPlayer;
+    private TextToSpeech textToSpeech;
+    private boolean textToSpeechReady = false;
 
     private long endTimeMillis = 0;
     private long totalDurationMillis = 0;
@@ -34,6 +38,13 @@ public class VoiceTimerBackgroundService extends Service {
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+
+        textToSpeech = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeechReady = true;
+                textToSpeech.setLanguage(Locale.TRADITIONAL_CHINESE);
+            }
+        });
     }
 
     @Override
@@ -55,7 +66,7 @@ public class VoiceTimerBackgroundService extends Service {
                     createNotification("VoiceTimer：5 分鐘提醒")
             );
 
-            playAlarmFor60Seconds("還剩 5 分鐘");
+            playAlarmFor60Seconds("還剩 5 分鐘", false);
 
             return START_NOT_STICKY;
         }
@@ -72,7 +83,7 @@ public class VoiceTimerBackgroundService extends Service {
 
             cancelReminderAlarms();
 
-            playAlarmFor60Seconds("倒數時間到了！");
+            playAlarmFor60Seconds("時間到了，浩川祝你健康", true);
 
             return START_NOT_STICKY;
         }
@@ -170,7 +181,8 @@ public class VoiceTimerBackgroundService extends Service {
                         );
 
                         playAlarmFor60Seconds(
-                                "倒數時間到了！"
+                                "時間到了，浩川祝你健康",
+                                true
                         );
                     }
                 };
@@ -373,9 +385,13 @@ public class VoiceTimerBackgroundService extends Service {
     // 播放提醒聲音 60 秒
     // =========================================================
 
-    private void playAlarmFor60Seconds(String message) {
+    private void playAlarmFor60Seconds(String message, boolean speakMessage) {
 
         stopAlert();
+
+        if (speakMessage) {
+            speakFinishMessage(message);
+        }
 
         playAlarm();
 
@@ -405,6 +421,25 @@ public class VoiceTimerBackgroundService extends Service {
                 };
 
         alertTimer.start();
+    }
+
+    private void speakFinishMessage(String message) {
+        if (textToSpeech == null) {
+            return;
+        }
+
+        if (!textToSpeechReady) {
+            textToSpeech.setLanguage(Locale.TRADITIONAL_CHINESE);
+            textToSpeech.speak(message, TextToSpeech.QUEUE_FLUSH, null, "finish_message");
+            return;
+        }
+
+        textToSpeech.speak(
+                message,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "finish_message"
+        );
     }
 
     // =========================================================
@@ -520,6 +555,13 @@ public class VoiceTimerBackgroundService extends Service {
         cancelReminderAlarms();
 
         stopAlarm();
+
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+            textToSpeech = null;
+            textToSpeechReady = false;
+        }
 
         super.onDestroy();
     }
