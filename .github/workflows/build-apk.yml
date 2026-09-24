@@ -53,30 +53,62 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Verify Final Release APK
+      - name: Sign and Verify Release APK
         run: |
-          APK="android/app/build/outputs/apk/release/app-release.apk"
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: Final release APK not found: $APK"
-            echo "=== APK files produced by Gradle ==="
+          INPUT_APK="android/app/build/intermediates/apk/release/app-release.apk"
+          OUTPUT_APK="android/app/build/outputs/apk/release/app-release-signed.apk"
+
+          if [ ! -f "$INPUT_APK" ]; then
+            echo "ERROR: Release APK input not found: $INPUT_APK"
             find android/app/build -type f -name "*.apk" -print
             exit 1
           fi
 
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          if [ -z "$APKSIGNER" ]; then
-            echo "ERROR: apksigner not found in Android SDK."
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+
+          if [ ! -x "$ZIPALIGN" ] || [ ! -x "$APKSIGNER" ]; then
+            echo "ERROR: Android SDK build tools are missing zipalign or apksigner."
             exit 1
           fi
 
-          echo "=== Verifying final release APK signature ==="
-          echo "APK: $APK"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          mkdir -p android/app/build/outputs/apk/release
 
-      - name: Upload Final Release APK
+          keytool -genkeypair \
+            -keystore android/app/build/voice-timer-test.keystore \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -noprompt
+
+          TEMP_ALIGNED="android/app/build/outputs/apk/release/app-release-aligned.apk"
+
+          "$ZIPALIGN" -f 4 "$INPUT_APK" "$TEMP_ALIGNED"
+
+          "$APKSIGNER" sign \
+            --ks android/app/build/voice-timer-test.keystore \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            --out "$OUTPUT_APK" \
+            "$TEMP_ALIGNED"
+
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK"
+
+          rm -f "$TEMP_ALIGNED" android/app/build/voice-timer-test.keystore
+
+          echo "=== Final signed APK ==="
+          ls -lh "$OUTPUT_APK"
+
+      - name: Upload Final Signed APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/release/app-release-signed.apk
           if-no-files-found: error
           retention-days: 7
