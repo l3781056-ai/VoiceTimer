@@ -30,6 +30,7 @@ public class VoiceTimerBackgroundService extends Service {
     private MediaPlayer alarmPlayer;
     private TextToSpeech textToSpeech;
     private boolean textToSpeechReady = false;
+    private String pendingFinishMessage = null;
 
     private long endTimeMillis = 0;
     private long totalDurationMillis = 0;
@@ -43,6 +44,16 @@ public class VoiceTimerBackgroundService extends Service {
             if (status == TextToSpeech.SUCCESS) {
                 textToSpeechReady = true;
                 textToSpeech.setLanguage(Locale.TRADITIONAL_CHINESE);
+
+                if (pendingFinishMessage != null) {
+                    textToSpeech.speak(
+                            pendingFinishMessage,
+                            TextToSpeech.QUEUE_FLUSH,
+                            null,
+                            "finish_message"
+                    );
+                    pendingFinishMessage = null;
+                }
             }
         });
     }
@@ -75,6 +86,11 @@ public class VoiceTimerBackgroundService extends Service {
         // 倒數結束
         // =========================
         if (VoiceTimerAlarmReceiver.ACTION_FINISH.equals(action)) {
+
+            if (countDownTimer != null) {
+                countDownTimer.cancel();
+                countDownTimer = null;
+            }
 
             startForeground(
                     NOTIFICATION_ID,
@@ -429,8 +445,8 @@ public class VoiceTimerBackgroundService extends Service {
         }
 
         if (!textToSpeechReady) {
+            pendingFinishMessage = message;
             textToSpeech.setLanguage(Locale.TRADITIONAL_CHINESE);
-            textToSpeech.speak(message, TextToSpeech.QUEUE_FLUSH, null, "finish_message");
             return;
         }
 
