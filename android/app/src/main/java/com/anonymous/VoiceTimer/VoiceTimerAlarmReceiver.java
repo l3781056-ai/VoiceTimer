@@ -137,6 +137,22 @@ public class VoiceTimerAlarmReceiver extends BroadcastReceiver {
         );
 
         vibrate(context);
+
+        // 結束時由前景服務負責播放指定語音，
+        // 即使 App 在背景或螢幕鎖定，也能執行語音播報。
+        if (ACTION_FINISH.equals(action)) {
+            Intent serviceIntent = new Intent(
+                    context,
+                    VoiceTimerBackgroundService.class
+            );
+            serviceIntent.setAction(ACTION_FINISH);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+        }
     }
 
     private void createNotificationChannel(Context context) {
