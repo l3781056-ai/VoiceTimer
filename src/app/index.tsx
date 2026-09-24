@@ -42,10 +42,12 @@ export default function HomeScreen() {
 
   const endTimeRef = useRef<number | null>(null);
   const lastReminderRef = useRef<number | null>(null);
+  const lastSetSecondsRef = useRef(0);
+  const pendingVoiceMinutesRef = useRef<number | null>(null);
+  const voiceReleasedRef = useRef(false);
   const finishIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 初始化具備喚醒螢幕能力的 Android 原生鬧鐘頻道
   useEffect(() => {
     (async () => {
       try {
@@ -78,14 +80,14 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // 標準自然語音播報（正常音調 pitch: 1.0）
   const speakNormal = (text: string) => {
     try {
       const volNum = volume === '低' ? 0.4 : volume === '中' ? 0.75 : 1.0;
+      Speech.stop();
       Speech.speak(text, {
         language: 'zh-TW',
-        pitch: 1.0, // 正常平常常用音調
-        rate: 1.0,  // 標準正常語速
+        pitch: 1.0,
+        rate: 1.0,
         volume: volNum,
       });
     } catch (e) {
@@ -93,7 +95,6 @@ export default function HomeScreen() {
     }
   };
 
-  // 停止結束提醒
   const stopFinishedSound = () => {
     if (finishIntervalRef.current) {
       clearInterval(finishIntervalRef.current);
@@ -108,7 +109,6 @@ export default function HomeScreen() {
     deactivateKeepAwake();
   };
 
-  // 前台計時器迴圈
   useEffect(() => {
     if (!isRunning) return;
 
@@ -125,20 +125,20 @@ export default function HomeScreen() {
       const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
       setSecondsLeft(remaining);
 
-      // 時間歸零
       if (remaining <= 0) {
         clearInterval(timer);
         setIsRunning(false);
         setIsFinished(true);
         endTimeRef.current = null;
 
-        // 倒數到 0 時以正常自然音調語音通知，並觸發原生鬧鐘警報震動
-        speakNormal('倒數時間到了');
+        // 保留本次設定的時間，不讓畫面歸零。
+        setSecondsLeft(lastSetSecondsRef.current);
+
+        speakNormal('時間到了，浩川祝你健康');
         Vibration.vibrate([0, 800, 400, 800]);
 
-        // 持續提醒，滿 1 分鐘自動結束
         finishIntervalRef.current = setInterval(() => {
-          speakNormal('倒數時間到了');
+          speakNormal('時間到了，浩川祝你健康');
           Vibration.vibrate([0, 600, 300, 600]);
         }, 4000);
 
@@ -151,7 +151,6 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [isRunning]);
 
-  // 前台每 5 分鐘提醒
   useEffect(() => {
     if (!isRunning || secondsLeft <= 0) return;
 
@@ -162,14 +161,105 @@ export default function HomeScreen() {
       lastReminderRef.current !== remainingMinutes
     ) {
       lastReminderRef.current = remainingMinutes;
-      // 語音與系統震動提醒
       speakNormal(`還剩 ${remainingMinutes} 分鐘`);
       Vibration.vibrate([0, 300, 150, 300]);
     }
   }, [secondsLeft, isRunning]);
 
+  const startTimerFromVoice = (value: number) => {
+    const durationSeconds = value * 60;
+
+    lastSetSecondsRef.current = durationSeconds;
+    setMinutes(value);
+    setSecondsLeft(durationSeconds);
+    setIsFinished(false);
+    lastReminderRef.current = value;
+
+    endTimeRef.current = Date.now() + durationSeconds * 1000;
+    setIsRunning(true);
+
+    try {
+      VoiceTimerModule?.startTimer(durationSeconds * 1000);
+    } catch (e) {
+      console.log('VoiceTimerModule start error:', e);
+    }
+  };
+
+  const parseVoiceMinutes = (text: string): number | null => {
+    const match = text.match(
+      /(\d+(?:\.\d+)?)\s*(分鐘|分|min|mins|minute|minutes)/i
+    );
+
+    if (!match) return null;
+
+    const value = Math.floor(Number(match[1]));
+    if (!Number.isFinite(value)) return null;
+
+    return value;
+  };
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const text = event.results?.[0]?.transcript ?? '';
+    if (!text) return;
+
+    setIsListening(false);
+
+    const value = parseVoiceMinutes(text);
+
+    if (value === null) {
+      pendingVoiceMinutesRef.current = null;
+      speakNormal('請說例如，倒數十分鐘，或倒數三十分鐘。');
+      return;
+    }
+
+    if (value < 1) {
+      pendingVoiceMinutesRef.current = null;
+      speakNormal('倒數時間至少要一分鐘。');
+      return;
+    }
+
+    if (value > 180) {
+      pendingVoiceMinutesRef.current = null;
+      speakNormal('時間不能超過一百八十分鐘。');
+      return;
+    }
+
+    pendingVoiceMinutesRef.current = value;
+    setMinutes(value);
+    setSecondsLeft(value * 60);
+    lastSetSecondsRef.current = value * 60;
+    lastReminderRef.current = value;
+    setIsFinished(false);
+
+    // 先確認語音輸入的時間；倒數必須等手指放開才啟動。
+    speakNormal(`好的，已設定倒數 ${value} 分鐘。`);
+
+    if (voiceReleasedRef.current) {
+      const confirmedValue = pendingVoiceMinutesRef.current;
+      pendingVoiceMinutesRef.current = null;
+      if (confirmedValue !== null) {
+        startTimerFromVoice(confirmedValue);
+      }
+    }
+  });
+
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    setIsListening(false);
+    pendingVoiceMinutesRef.current = null;
+    console.log('Speech recognition error:', event.error);
+  });
+
   const startListening = async () => {
     if (isRunning || isFinished) return;
+
     if (Platform.OS !== 'android') {
       Alert.alert('提示', '目前以 Android 版本為主。');
       return;
@@ -178,10 +268,14 @@ export default function HomeScreen() {
     try {
       const permission =
         await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
       if (!permission.granted) {
         Alert.alert('需要麥克風權限', '請允許使用麥克風。');
         return;
       }
+
+      pendingVoiceMinutesRef.current = null;
+
       ExpoSpeechRecognitionModule.start({
         lang: 'zh-TW',
         interimResults: false,
@@ -192,12 +286,35 @@ export default function HomeScreen() {
     }
   };
 
+  const releaseVoiceButton = () => {
+    voiceReleasedRef.current = true;
+
+    const confirmedValue = pendingVoiceMinutesRef.current;
+    if (confirmedValue !== null) {
+      pendingVoiceMinutesRef.current = null;
+      startTimerFromVoice(confirmedValue);
+    } else if (isListening) {
+      // 尚未辨識成功就放開，不啟動倒數。
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const pressVoiceButton = () => {
+    voiceReleasedRef.current = false;
+    startListening();
+  };
+
   const toggleTimer = async () => {
     if (isFinished) {
       stopFinishedSound();
       setIsFinished(false);
       setSecondsLeft(0);
       setMinutes(null);
+      lastSetSecondsRef.current = 0;
       lastReminderRef.current = null;
 
       try {
@@ -236,8 +353,6 @@ export default function HomeScreen() {
     } catch (e) {
       console.log('VoiceTimerModule start error:', e);
     }
-
-    // 背景提醒改由 Android 原生 AlarmManager 負責
   };
 
   const announceRemainingTime = () => {
@@ -256,10 +371,11 @@ export default function HomeScreen() {
   const formatTime = () => {
     const m = Math.floor(secondsLeft / 60);
     const s = secondsLeft % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return { minutes: String(m).padStart(2, '0'), seconds: String(s).padStart(2, '0') };
   };
 
   const volumeOptions: VolumeLevel[] = ['低', '中', '高'];
+  const displayTime = formatTime();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -269,18 +385,23 @@ export default function HomeScreen() {
           activeOpacity={0.8}
           onPress={announceRemainingTime}
         >
-          <Text style={styles.timer}>{formatTime()}</Text>
+          <View style={styles.timerRow}>
+            <Text style={styles.timerMinutes}>{displayTime.minutes}</Text>
+            <Text style={styles.timerColon}>:</Text>
+            <Text style={styles.timerSeconds}>{displayTime.seconds}</Text>
+          </View>
         </TouchableOpacity>
 
         {!isRunning && !isFinished && (
           <>
             <TouchableOpacity
               style={[styles.mainButton, styles.voiceButton]}
-              onPress={startListening}
-              disabled={isListening}
+              activeOpacity={0.75}
+              onPressIn={pressVoiceButton}
+              onPressOut={releaseVoiceButton}
             >
               <Text style={styles.voiceButtonText}>
-                {isListening ? '🎙️ 正在聆聽中...' : '🎙️ 點擊語音設定時間'}
+                {isListening ? '🎙️ 按住並說出時間...' : '🎙️ 按住語音設定時間'}
               </Text>
             </TouchableOpacity>
 
@@ -338,11 +459,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timer: {
-    fontSize: 96,
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+  },
+  timerMinutes: {
+    fontSize: 144,
     fontWeight: 'bold',
     color: '#ffffff',
     letterSpacing: 3,
+    lineHeight: 156,
+  },
+  timerColon: {
+    fontSize: 96,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    lineHeight: 110,
+  },
+  timerSeconds: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    letterSpacing: 1,
+    lineHeight: 56,
   },
   mainButton: {
     width: '85%',
