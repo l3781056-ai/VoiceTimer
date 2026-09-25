@@ -53,76 +53,45 @@ jobs:
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Sign, Align and Verify Release APK
+      - name: Verify Gradle Release APK
         run: |
-          INPUT_APK="android/app/build/intermediates/apk/release/app-release.apk"
-          OUTPUT_APK="android/app/build/outputs/apk/release/app-release-signed.apk"
-          TEMP_ALIGNED="android/app/build/outputs/apk/release/app-release-aligned.apk"
+          APK="android/app/build/intermediates/apk/release/app-release.apk"
 
-          if [ ! -f "$INPUT_APK" ]; then
-            echo "ERROR: Release APK input not found: $INPUT_APK"
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: Gradle release APK not found: $APK"
             find android/app/build -type f -name "*.apk" -print
             exit 1
           fi
 
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          ZIPALIGN="$BUILD_TOOLS/zipalign"
           APKSIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
 
-          if [ ! -x "$ZIPALIGN" ] || [ ! -x "$APKSIGNER" ]; then
-            echo "ERROR: Android SDK build tools are missing zipalign or apksigner."
-            exit 1
-          fi
+          echo "=== APK ==="
+          ls -lh "$APK"
 
-          mkdir -p android/app/build/outputs/apk/release
+          echo "=== Signature verification ==="
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
-          keytool -genkeypair \
-            -keystore android/app/build/voice-timer-test.keystore \
-            -storepass android \
-            -keypass android \
-            -alias androiddebugkey \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US" \
-            -noprompt
+          echo "=== ZIP alignment verification ==="
+          "$ZIPALIGN" -v -c 4 "$APK"
 
-          # Align BEFORE signing. V1 signing is disabled because adding META-INF
-          # entries after zipalign can move resources.arsc off a 4-byte boundary.
-          "$ZIPALIGN" -f 4 "$INPUT_APK" "$TEMP_ALIGNED"
-          "$ZIPALIGN" -v -c 4 "$TEMP_ALIGNED"
-
-          "$APKSIGNER" sign \
-            --ks android/app/build/voice-timer-test.keystore \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --ks-key-alias androiddebugkey \
-            --v1-signing-enabled false \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            --out "$OUTPUT_APK" \
-            "$TEMP_ALIGNED"
-
-          # Verify both the APK signature and the final ZIP alignment.
-          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK"
-          "$ZIPALIGN" -v -c 4 "$OUTPUT_APK"
-
-          if unzip -lv "$OUTPUT_APK" | grep -q "Stored.*resources.arsc"; then
-            echo "=== resources.arsc is stored (uncompressed) ==="
-          else
+          echo "=== resources.arsc ==="
+          unzip -lv "$APK" | grep "resources.arsc"
+          if ! unzip -lv "$APK" | grep -q "Stored.*resources.arsc"; then
             echo "ERROR: resources.arsc is compressed or missing."
             exit 1
           fi
 
-          rm -f "$TEMP_ALIGNED" android/app/build/voice-timer-test.keystore
-
-          echo "=== Final signed APK ==="
-          ls -lh "$OUTPUT_APK"
+          echo "=== Final Gradle APK is valid ==="
+          mkdir -p android/app/build/outputs/apk/release
+          cp "$APK" android/app/build/outputs/apk/release/app-release.apk
+          ls -lh android/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload Final Signed APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: android/app/build/outputs/apk/release/app-release-signed.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
