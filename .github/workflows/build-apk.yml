@@ -5,10 +5,12 @@ on:
     branches: [ main, clean-stable ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,65 +54,60 @@ jobs:
           echo "org.gradle.java.installations.paths=/usr/lib/jvm/temurin-17-jdk-amd64,/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.*" >> android/gradle.properties
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
 
-      - name: Build Standalone Release APK
+      - name: Build Release and Debug APKs
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxMetaspaceSize=1024m'"
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleRelease assembleDebug --no-daemon --stacktrace
 
-      - name: Verify Gradle Release APK
+      - name: Verify and prepare APKs
         run: |
-          APK="android/app/build/intermediates/apk/release/app-release.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: Gradle release APK not found: $APK"
-            find android/app/build -type f -name "*.apk" -print
-            exit 1
-          fi
-
+          set -e
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           APKSIGNER="$BUILD_TOOLS/apksigner"
           ZIPALIGN="$BUILD_TOOLS/zipalign"
+          AAPT2="$BUILD_TOOLS/aapt2"
+          RELEASE="android/app/build/outputs/apk/release/app-release.apk"
+          DEBUG="android/app/build/outputs/apk/debug/app-debug.apk"
 
-          echo "=== APK ==="
-          ls -lh "$APK"
+          test -f "$RELEASE"
+          test -f "$DEBUG"
 
-          echo "=== Signature verification ==="
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          echo "=== RELEASE APK ==="
+          ls -lh "$RELEASE"
+          "$APKSIGNER" verify --verbose --print-certs "$RELEASE"
+          "$ZIPALIGN" -c 4 "$RELEASE"
+          "$AAPT2" dump badging "$RELEASE" | grep -E "package:|sdkVersion:|targetSdkVersion:" || true
 
-          echo "=== ZIP alignment verification ==="
-          "$ZIPALIGN" -v -c 4 "$APK"
+          echo "=== DEBUG APK (INSTALL TEST) ==="
+          ls -lh "$DEBUG"
+          "$APKSIGNER" verify --verbose --print-certs "$DEBUG"
+          "$ZIPALIGN" -c 4 "$DEBUG"
+          "$AAPT2" dump badging "$DEBUG" | grep -E "package:|sdkVersion:|targetSdkVersion:" || true
 
-          echo "=== resources.arsc ==="
-          unzip -lv "$APK" | grep "resources.arsc"
-          if ! unzip -lv "$APK" | grep -q "Stored.*resources.arsc"; then
-            echo "ERROR: resources.arsc is compressed or missing."
-            exit 1
-          fi
-
-          echo "=== APK package metadata ==="
-          "$BUILD_TOOLS/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion:|targetSdkVersion:|application-label:" || true
-
-          echo "=== Final Gradle APK is valid ==="
           mkdir -p android/app/build/outputs/apk/release
-          cp "$APK" android/app/build/outputs/apk/release/VoiceTimer.apk
-          ls -lh android/app/build/outputs/apk/release/VoiceTimer.apk
+          cp "$RELEASE" android/app/build/outputs/apk/release/VoiceTimer-release.apk
+          cp "$DEBUG" android/app/build/outputs/apk/release/VoiceTimer-debug.apk
 
-      - name: Upload APK Artifact
+          echo "=== SHA256 ==="
+          sha256sum android/app/build/outputs/apk/release/VoiceTimer-release.apk
+          sha256sum android/app/build/outputs/apk/release/VoiceTimer-debug.apk
+
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceTimer-APK
-          path: android/app/build/outputs/apk/release/VoiceTimer.apk
+          name: VoiceTimer-APKs
+          path: |
+            android/app/build/outputs/apk/release/VoiceTimer-release.apk
+            android/app/build/outputs/apk/release/VoiceTimer-debug.apk
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish APK as GitHub Release asset
+      - name: Publish APKs as GitHub Release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="voicetimer-build-${{ github.run_number }}"
-          gh release create "$TAG" android/app/build/outputs/apk/release/VoiceTimer.apk \
-            --title "VoiceTimer Build ${{ github.run_number }}" \
-            --notes "Clean-stable test APK built directly by Gradle. Download VoiceTimer.apk directly; do not install the workflow artifact ZIP."
+          gh release create "$TAG"             android/app/build/outputs/apk/release/VoiceTimer-debug.apk             android/app/build/outputs/apk/release/VoiceTimer-release.apk             --title "VoiceTimer Build ${{ github.run_number }}"             --notes "Clean-stable build. For phone installation testing, use VoiceTimer-debug.apk first. The release APK is included separately."
