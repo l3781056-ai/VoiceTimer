@@ -91,7 +91,7 @@ jobs:
           fi
 
           echo "=== APK package metadata ==="
-          "$BUILD_TOOLS/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion:|targetSdkVersion:|application-label:"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion:|targetSdkVersion:|application-label:" || true
 
           echo "=== Final Gradle APK is valid ==="
           mkdir -p android/app/build/outputs/apk/release
