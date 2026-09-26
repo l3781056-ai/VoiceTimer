@@ -2,9 +2,6 @@ name: Build VoiceTimer APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -13,21 +10,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-      - name: Set up Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
         with:
           name: VoiceTimer-debug
           path: app/build/outputs/apk/debug/app-debug.apk
