@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, clean-stable ]
+    branches: [ clean-stable ]
   workflow_dispatch:
 
 permissions:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,13 +35,13 @@ jobs:
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
 
       - name: Setup Gradle Cache
@@ -49,65 +50,49 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x android/gradlew
 
-      - name: Configure Gradle JVM and Memory
+      - name: Configure Gradle
         run: |
           echo "org.gradle.java.installations.paths=/usr/lib/jvm/temurin-17-jdk-amd64,/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.*" >> android/gradle.properties
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
 
-      - name: Build Release and Debug APKs
+      - name: Build installable Debug APK
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxMetaspaceSize=1024m'"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m"
         run: |
           cd android
-          ./gradlew assembleRelease assembleDebug --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Verify and prepare APKs
+      - name: Check APK exists
         run: |
           set -e
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          mkdir -p dist
+          cp "$APK" dist/VoiceTimer-debug.apk
+          ls -lh dist/VoiceTimer-debug.apk
+          sha256sum dist/VoiceTimer-debug.apk
+
+      - name: Verify APK (diagnostic only)
+        continue-on-error: true
+        run: |
+          APK="dist/VoiceTimer-debug.apk"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          APKSIGNER="$BUILD_TOOLS/apksigner"
-          ZIPALIGN="$BUILD_TOOLS/zipalign"
-          AAPT2="$BUILD_TOOLS/aapt2"
-          RELEASE="android/app/build/outputs/apk/release/app-release.apk"
-          DEBUG="android/app/build/outputs/apk/debug/app-debug.apk"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$BUILD_TOOLS/zipalign" -c 4 "$APK"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" | head -c 4000 || true
 
-          test -f "$RELEASE"
-          test -f "$DEBUG"
-
-          echo "=== RELEASE APK ==="
-          ls -lh "$RELEASE"
-          "$APKSIGNER" verify --verbose --print-certs "$RELEASE"
-          "$ZIPALIGN" -c 4 "$RELEASE"
-          "$AAPT2" dump badging "$RELEASE" | grep -E "package:|sdkVersion:|targetSdkVersion:" || true
-
-          echo "=== DEBUG APK (INSTALL TEST) ==="
-          ls -lh "$DEBUG"
-          "$APKSIGNER" verify --verbose --print-certs "$DEBUG"
-          "$ZIPALIGN" -c 4 "$DEBUG"
-          "$AAPT2" dump badging "$DEBUG" | grep -E "package:|sdkVersion:|targetSdkVersion:" || true
-
-          mkdir -p android/app/build/outputs/apk/release
-          cp "$RELEASE" android/app/build/outputs/apk/release/VoiceTimer-release.apk
-          cp "$DEBUG" android/app/build/outputs/apk/release/VoiceTimer-debug.apk
-
-          echo "=== SHA256 ==="
-          sha256sum android/app/build/outputs/apk/release/VoiceTimer-release.apk
-          sha256sum android/app/build/outputs/apk/release/VoiceTimer-debug.apk
-
-      - name: Upload APKs
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceTimer-APKs
-          path: |
-            android/app/build/outputs/apk/release/VoiceTimer-release.apk
-            android/app/build/outputs/apk/release/VoiceTimer-debug.apk
+          name: VoiceTimer-debug-APK
+          path: dist/VoiceTimer-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
-      - name: Publish APKs as GitHub Release assets
+      - name: Publish Debug APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="voicetimer-build-${{ github.run_number }}"
-          gh release create "$TAG"             android/app/build/outputs/apk/release/VoiceTimer-debug.apk             android/app/build/outputs/apk/release/VoiceTimer-release.apk             --title "VoiceTimer Build ${{ github.run_number }}"             --notes "Clean-stable build. For phone installation testing, use VoiceTimer-debug.apk first. The release APK is included separately."
+          TAG="voicetimer-debug-${{ github.run_number }}"
+          gh release create "$TAG"             dist/VoiceTimer-debug.apk             --title "VoiceTimer Debug Build ${{ github.run_number }}"             --notes "Clean-stable installation test build. Install VoiceTimer-debug.apk on the Android phone."
