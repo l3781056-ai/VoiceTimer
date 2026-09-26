@@ -156,6 +156,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             .putBoolean(KEY_PAUSED, false)
             .putLong(KEY_END_ELAPSED, android.os.SystemClock.elapsedRealtime() + safeSeconds * 1000L)
             .apply()
+        speak(startPhrase(safeSeconds))
         startTimerService(TimerService.ACTION_START, safeSeconds)
         refreshFromSavedState()
     }
@@ -307,6 +308,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun speak(text: String) {
         if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "VoiceTimer_" + System.currentTimeMillis())
+    }
+
+    private fun startPhrase(seconds: Long): String {
+        val minutes = seconds / 60L
+        val secs = seconds % 60L
+        return when {
+            minutes > 0 && secs > 0 -> "開始倒數 $minutes 分 $secs 秒"
+            minutes > 0 -> "開始倒數 $minutes 分鐘"
+            else -> "開始倒數 $secs 秒"
+        }
     }
 
     private fun remainingPhrase(seconds: Long): String {
