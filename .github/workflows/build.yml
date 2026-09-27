@@ -31,3 +31,5 @@ jobs:
         with:
           name: VoiceTimer-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+# Trigger refreshed after TimerService compile fix
