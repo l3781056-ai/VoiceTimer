@@ -225,7 +225,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     action = TimerService.ACTION_START
                     putExtra(TimerService.EXTRA_SECONDS, configured)
                 }
-                ContextCompat.startForegroundService(this, intent)
+                startForegroundService(intent)
             }
         }
         refreshUi()
