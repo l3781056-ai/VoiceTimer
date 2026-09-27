@@ -49,8 +49,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val reset=Button(this).apply{text="清除";textSize=14f;minWidth=0;minimumWidth=0;minHeight=0;minimumHeight=0;setPadding(18,4,18,4);setOnClickListener{AlertDialog.Builder(this@MainActivity).setTitle("清除累計").setMessage("確定將累計時間與完成次數歸零嗎？").setNegativeButton("取消",null).setPositiveButton("確定"){_,_->prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply();refresh()}.show()}}
         val voice=Button(this).apply{text="🎤 語音輸入時間";textSize=19f;setOnClickListener{speech()}}
         control=Button(this).apply{text="開始";textSize=22f;setTypeface(null,Typeface.BOLD);setTextColor(Color.WHITE);setOnClickListener{controlClick()}}
-        val totalRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;layoutParams=LinearLayout.LayoutParams(-1,WrapContent).apply{bottomMargin=12}}
-        total.layoutParams=LinearLayout.LayoutParams(0,WrapContent,1f).apply{leftMargin=8}
+        val totalRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;layoutParams=LinearLayout.LayoutParams(-1,ViewGroup.LayoutParams.WRAP_CONTENT).apply{bottomMargin=12}}
+        total.layoutParams=LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f).apply{leftMargin=8}
         totalRow.addView(total)
         totalRow.addView(reset)
         root.addView(head);root.addView(display);root.addView(totalRow);root.addView(voice);root.addView(control);setContentView(root)
