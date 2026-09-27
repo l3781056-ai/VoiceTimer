@@ -133,7 +133,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         manualInput = EditText(this).apply {
             hint = "離線語音不可用時：輸入分鐘數後按完成"
-            hintTextColor = Color.GRAY
+            setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 18f
             gravity = Gravity.CENTER
