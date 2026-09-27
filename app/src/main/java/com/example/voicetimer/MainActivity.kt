@@ -25,13 +25,11 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import android.app.Activity
 import java.util.Locale
 import kotlin.math.abs
 
-class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
+class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private lateinit var timerDisplay: TextView
     private lateinit var btnVoice: Button
@@ -223,7 +221,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 val intent = Intent(this, TimerService::class.java).apply {
                     action = TimerService.ACTION_PAUSE
                 }
-                ContextCompat.startForegroundService(this, intent)
+                startForegroundService(intent)
             }
 
             isPaused -> {
@@ -452,7 +450,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun checkPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (
-                ContextCompat.checkSelfPermission(
+                checkSelfPermission(
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
