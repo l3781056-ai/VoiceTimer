@@ -24,8 +24,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import android.app.Activity
 import java.util.Locale
 import kotlin.math.abs
 
@@ -218,7 +216,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 val intent = Intent(this, TimerService::class.java).apply {
                     action = TimerService.ACTION_RESUME
                 }
-                ContextCompat.startForegroundService(this, intent)
+                startForegroundService(intent)
             }
 
             else -> {
@@ -440,16 +438,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun checkPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (
-                checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    101
-                )
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
             }
         }
     }
