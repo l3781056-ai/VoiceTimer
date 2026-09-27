@@ -16,18 +16,25 @@ import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
-import android.widget.Button
+import android.view.MotionEvent
+import android.view.View
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.text.InputType
 import android.widget.Toast
 import java.util.Locale
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
-    private lateinit var display: TextView
+    private lateinit var root: LinearLayout
+    private lateinit var minuteDisplay: TextView
+    private lateinit var secondDisplay: TextView
     private lateinit var status: TextView
-    private lateinit var voiceButton: Button
-    private lateinit var toggleButton: Button
-    private lateinit var resetButton: Button
+    private lateinit var voiceButton: TextView
+    private lateinit var controlButton: TextView
+    private lateinit var manualInput: EditText
+    private var downY = 0f
+    private var downX = 0f
     private lateinit var prefs: SharedPreferences
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -50,6 +57,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         private const val KEY_END_ELAPSED = "end_elapsed"
         private const val SPEECH_REQUEST = 1001
         private const val NOTIFICATION_REQUEST = 1002
+        private const val MAX_SECONDS = 10800L
+        private const val STEP_SECONDS = 300L
+        private const val KEY_ALARMING = "alarming"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,51 +99,114 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun buildUi() {
-        val root = LinearLayout(this).apply {
+        root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(24, 24, 24, 24)
             setBackgroundColor(Color.BLACK)
+            setOnTouchListener { _, event -> handleScreenGesture(event) }
         }
-        display = TextView(this).apply {
-            textSize = 72f
+        minuteDisplay = TextView(this).apply {
+            textSize = 96f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            setPadding(0, 20, 0, 10)
-            setOnClickListener { speakRemaining() }
+        }
+        secondDisplay = TextView(this).apply {
+            textSize = 32f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
         }
         status = TextView(this).apply {
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 30)
+            setPadding(0, 8, 0, 18)
         }
-        voiceButton = Button(this).apply {
-            text = "語音輸入時間"
-            textSize = 18f
+        voiceButton = TextView(this).apply {
+            text = "🎤 語音輸入"
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(24, 18, 24, 18)
+            setBackgroundColor(Color.DKGRAY)
             setOnClickListener { startSpeechInput() }
         }
-        toggleButton = Button(this).apply {
-            text = "開始"
+        manualInput = EditText(this).apply {
+            hint = "離線語音不可用時：輸入分鐘數後按完成"
+            hintTextColor = Color.GRAY
+            setTextColor(Color.WHITE)
             textSize = 18f
-            setOnClickListener { toggleTimer() }
-        }
-        resetButton = Button(this).apply {
-            text = "重設"
-            textSize = 18f
-            setOnClickListener { resetTimer() }
-        }
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            inputType = InputType.TYPE_CLASS_NUMBER
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            setSingleLine(true)
+            setOnEditorActionListener { _, _, _ -> setManualMinutes(); true }
         }
-        row.addView(toggleButton)
-        row.addView(resetButton)
-        root.addView(display, LinearLayout.LayoutParams(-1, -2))
+        controlButton = TextView(this).apply {
+            text = "開始"
+            textSize = 26f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(24, 28, 24, 28)
+            setBackgroundColor(Color.DKGRAY)
+            setOnClickListener { toggleTimer() }
+            setOnLongClickListener {
+                if (prefs.getBoolean(KEY_PAUSED, false)) { resetTimer(); true } else false
+            }
+        }
+        root.addView(minuteDisplay, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(secondDisplay, LinearLayout.LayoutParams(-1, 70))
         root.addView(status, LinearLayout.LayoutParams(-1, -2))
         root.addView(voiceButton, LinearLayout.LayoutParams(-1, -2))
-        root.addView(row, LinearLayout.LayoutParams(-1, -2))
+        root.addView(manualInput, LinearLayout.LayoutParams(-1, -2))
+        val p = LinearLayout.LayoutParams(-1, 110)
+        p.topMargin = 18
+        root.addView(controlButton, p)
         setContentView(root)
+    }
+
+    private fun handleScreenGesture(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y; return true }
+            MotionEvent.ACTION_UP -> {
+                if (prefs.getBoolean(KEY_ALARMING, false)) { stopAlarm(); return true }
+                val running = prefs.getBoolean(KEY_RUNNING, false)
+                val dx = event.x - downX
+                val dy = event.y - downY
+                if (!running && kotlin.math.abs(dy) > 80f && kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
+                    adjustConfigured(if (dy < 0) STEP_SECONDS else -STEP_SECONDS)
+                } else if (running && kotlin.math.abs(dy) < 30f && kotlin.math.abs(dx) < 30f) {
+                    speakRemaining()
+                }
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun adjustConfigured(delta: Long) {
+        if (prefs.getBoolean(KEY_RUNNING, false)) return
+        val base = if (prefs.getBoolean(KEY_PAUSED, false))
+            prefs.getLong(KEY_REMAINING, lastConfiguredSeconds) else lastConfiguredSeconds
+        val next = (base + delta).coerceIn(60L, MAX_SECONDS)
+        lastConfiguredSeconds = next
+        prefs.edit().putLong(KEY_CONFIGURED, next).putLong(KEY_REMAINING, next).apply()
+        refreshFromSavedState()
+        speak(next.toString() + " 分鐘")
+    }
+
+    private fun setManualMinutes() {
+        val minutes = manualInput.text.toString().trim().toLongOrNull()
+        if (minutes == null || minutes <= 0L) {
+            Toast.makeText(this, "請輸入 1～180 分鐘", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val safe = minutes.coerceAtMost(180L)
+        lastConfiguredSeconds = safe * 60L
+        prefs.edit().putLong(KEY_CONFIGURED, lastConfiguredSeconds).putLong(KEY_REMAINING, lastConfiguredSeconds).apply()
+        manualInput.setText("")
+        refreshFromSavedState()
+        Toast.makeText(this, "已設定 " + safe + " 分鐘", Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleTimer() {
@@ -153,6 +226,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             .putLong(KEY_CONFIGURED, safeSeconds)
             .putLong(KEY_REMAINING, safeSeconds)
             .putBoolean(KEY_RUNNING, true)
+            .putBoolean(KEY_ALARMING, false)
             .putBoolean(KEY_PAUSED, false)
             .putLong(KEY_END_ELAPSED, android.os.SystemClock.elapsedRealtime() + safeSeconds * 1000L)
             .apply()
@@ -184,11 +258,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         refreshFromSavedState()
     }
 
+    private fun stopAlarm() {
+        startTimerService(TimerService.ACTION_ALARM_STOP)
+        prefs.edit().putBoolean(KEY_RUNNING, false).putBoolean(KEY_PAUSED, false).putBoolean(KEY_ALARMING, false).putLong(KEY_REMAINING, lastConfiguredSeconds).remove(KEY_END_ELAPSED).apply()
+        refreshFromSavedState()
+    }
+
     private fun resetTimer() {
         startTimerService(TimerService.ACTION_STOP)
         prefs.edit()
             .putBoolean(KEY_RUNNING, false)
             .putBoolean(KEY_PAUSED, false)
+            .putBoolean(KEY_ALARMING, false)
             .putLong(KEY_REMAINING, lastConfiguredSeconds)
             .remove(KEY_END_ELAPSED)
             .apply()
@@ -224,29 +305,47 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun refreshFromSavedState() {
-        lastConfiguredSeconds = prefs.getLong(KEY_CONFIGURED, lastConfiguredSeconds).coerceIn(1L, 10800L)
+        lastConfiguredSeconds = prefs.getLong(KEY_CONFIGURED, lastConfiguredSeconds).coerceIn(1L, MAX_SECONDS)
         val running = prefs.getBoolean(KEY_RUNNING, false)
         val paused = prefs.getBoolean(KEY_PAUSED, false)
-        val remaining = currentRemainingSeconds()
-        display.text = formatTime(remaining)
+        val alarming = prefs.getBoolean(KEY_ALARMING, false)
+        val remaining = if (alarming) lastConfiguredSeconds else currentRemainingSeconds()
+        minuteDisplay.text = String.format(Locale.TAIWAN, "%02d", remaining / 60L)
+        secondDisplay.text = String.format(Locale.TAIWAN, ":%02d", remaining % 60L)
         when {
+            alarming -> {
+                status.text = "時間到了！碰觸螢幕或按鍵停止響鈴"
+                controlButton.text = "停止"
+                voiceButton.visibility = View.INVISIBLE
+                manualInput.visibility = View.INVISIBLE
+            }
             running -> {
-                status.text = "計時中（碰觸時間可朗讀）"
-                toggleButton.text = "暫停"
+                status.text = "計時中（碰觸螢幕可朗讀）"
+                controlButton.text = "暫停"
                 voiceButton.isEnabled = false
                 voiceButton.alpha = 0.35f
+                manualInput.isEnabled = false
+                manualInput.alpha = 0.35f
             }
             paused -> {
-                status.text = "已暫停"
-                toggleButton.text = "繼續"
+                status.text = "已暫停｜上滑 +5 分鐘，下滑 −5 分鐘｜長按重設"
+                controlButton.text = "繼續"
                 voiceButton.isEnabled = true
                 voiceButton.alpha = 1f
+                manualInput.isEnabled = true
+                manualInput.alpha = 1f
+                voiceButton.visibility = View.VISIBLE
+                manualInput.visibility = View.VISIBLE
             }
             else -> {
-                status.text = "準備就緒"
-                toggleButton.text = "開始"
+                status.text = "待命｜上滑 +5 分鐘，下滑 −5 分鐘"
+                controlButton.text = "開始"
                 voiceButton.isEnabled = true
                 voiceButton.alpha = 1f
+                manualInput.isEnabled = true
+                manualInput.alpha = 1f
+                voiceButton.visibility = View.VISIBLE
+                manualInput.visibility = View.VISIBLE
             }
         }
     }
@@ -255,7 +354,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出時間，例如「5分鐘」、「1小時30分鐘」或「180」")
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出時間，例如「5分鐘」、「30秒」或「3」")
         }
         try {
             startActivityForResult(intent, SPEECH_REQUEST)
@@ -289,8 +389,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             Toast.makeText(this, "無法辨識：「$spoken」", Toast.LENGTH_SHORT).show()
             return
         }
-        if (seconds > 10800L) {
-            seconds = 10800L
+        if (seconds > MAX_SECONDS) {
+            seconds = MAX_SECONDS
             Toast.makeText(this, "超過上限，已設定為 180 分鐘", Toast.LENGTH_SHORT).show()
         }
         lastConfiguredSeconds = seconds
