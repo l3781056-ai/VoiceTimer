@@ -235,7 +235,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_ALARM_STOP
         }
-        ContextCompat.startForegroundService(this, intent)
+        startForegroundService(intent)
         refreshUi()
     }
 
@@ -311,7 +311,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             action = TimerService.ACTION_START
             putExtra(TimerService.EXTRA_SECONDS, totalSec)
         }
-        ContextCompat.startForegroundService(this, intent)
+        startForegroundService(intent)
         refreshUi()
     }
 
