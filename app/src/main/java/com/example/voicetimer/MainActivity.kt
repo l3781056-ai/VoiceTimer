@@ -67,12 +67,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         }
 
-        ViewCompatInsets.apply(root)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root){v,insets-> val sb=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars()); val nb=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars()); v.setPadding(0,sb.top,0,nb.bottom); insets}
 
         val head=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            layoutParams=LinearLayout.LayoutParams(-1,52)
+            layoutParams=LinearLayout.LayoutParams(-1,(48*resources.displayMetrics.density).toInt())
         }
 
         val title=TextView(this).apply{
@@ -90,7 +90,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTextColor(Color.WHITE)
             backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
             setPadding(8,0,8,0)
-            layoutParams=LinearLayout.LayoutParams(52,-1)
+            layoutParams=LinearLayout.LayoutParams((48*resources.displayMetrics.density).toInt(),-1)
             setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}
         }
         head.addView(title)
@@ -135,7 +135,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val totalRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            layoutParams=LinearLayout.LayoutParams(-1,44)
+            layoutParams=LinearLayout.LayoutParams(-1,(40*resources.displayMetrics.density).toInt())
         }
 
         total=TextView(this).apply{
@@ -153,7 +153,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             minHeight=0
             minimumHeight=0
             setPadding(18,4,18,4)
-            layoutParams=LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,44)
+            layoutParams=LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,(36*resources.displayMetrics.density).toInt())
             setOnClickListener{
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("清除累計")
@@ -175,7 +175,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTextColor(Color.WHITE)
             backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
             setPadding(12,4,12,4)
-            layoutParams=LinearLayout.LayoutParams(-1,52).apply{topMargin=4}
+            layoutParams=LinearLayout.LayoutParams(-1,(48*resources.displayMetrics.density).toInt()).apply{topMargin=4}
             setOnClickListener{speech()}
         }
 
@@ -186,7 +186,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTextColor(Color.WHITE)
             backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
             setPadding(12,4,12,4)
-            layoutParams=LinearLayout.LayoutParams(-1,56).apply{topMargin=0;bottomMargin=4}
+            layoutParams=LinearLayout.LayoutParams(-1,(50*resources.displayMetrics.density).toInt()).apply{topMargin=0;bottomMargin=4}
             setOnClickListener{controlClick()}
         }
 
