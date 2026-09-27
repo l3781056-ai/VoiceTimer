@@ -1,382 +1,50 @@
 package com.example.voicetimer
 
-import android.app.AlarmManager
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
-import android.content.Context
-import android.content.Intent
-import android.media.AudioAttributes
+import android.app.*
+import android.content.*
+import android.media.Ringtone
 import android.media.RingtoneManager
-import android.os.Build
-import android.os.IBinder
-import android.os.PowerManager
-import android.os.SystemClock
+import android.os.*
 import android.speech.tts.TextToSpeech
-import java.util.Locale
-
-class TimerService : Service(), TextToSpeech.OnInitListener {
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
-    private var pendingSpeech: String? = null
-    private var alarmRingtone: android.media.Ringtone? = null
-
-    companion object {
-        const val ACTION_START = "com.example.voicetimer.START"
-        const val ACTION_PAUSE = "com.example.voicetimer.PAUSE"
-        const val ACTION_RESUME = "com.example.voicetimer.RESUME"
-        const val ACTION_STOP = "com.example.voicetimer.STOP"
-        const val ACTION_RECOVER = "com.example.voicetimer.RECOVER"
-        const val ACTION_REMINDER = "com.example.voicetimer.REMINDER"
-        const val ACTION_FINISH = "com.example.voicetimer.FINISH"
-        const val ACTION_ALARM_STOP = "com.example.voicetimer.ALARM_STOP"
-        const val EXTRA_SECONDS = "seconds"
-
-        private const val CHANNEL_ID = "voice_timer_running_v3"
-        private const val NOTIFICATION_ID = 10
-        private const val REMINDER_REQUEST = 2001
-        private const val FINISH_REQUEST = 2002
-        private const val PREFS = "VoiceTimerPrefs"
-        private const val KEY_RUNNING = "running"
-        private const val KEY_PAUSED = "paused"
-        private const val KEY_REMAINING = "remaining_seconds"
-        private const val KEY_END_ELAPSED = "end_elapsed"
-        private const val KEY_CONFIGURED = "configured_seconds"
-        private const val KEY_ALARMING = "alarming"
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        createNotificationChannel()
-        tts = TextToSpeech(this, this)
-    }
-
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts?.setLanguage(Locale.TAIWAN)
-            ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
-                    result != TextToSpeech.LANG_NOT_SUPPORTED
-            pendingSpeech?.let {
-                speakNow(it)
-                pendingSpeech = null
-            }
-        }
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> startOrResume(intent.getLongExtra(EXTRA_SECONDS, 300L))
-            ACTION_RESUME -> startOrResume(intent.getLongExtra(EXTRA_SECONDS, readRemaining()))
-            ACTION_RECOVER -> {
-                val seconds = readRemaining()
-                if (readRunning() && seconds > 0L) startOrResume(seconds)
-                else stopSelf()
-            }
-            ACTION_PAUSE -> pauseInternal()
-            ACTION_STOP -> stopInternal()
-            ACTION_REMINDER -> handleReminder()
-            ACTION_FINISH -> handleFinish()
-            ACTION_ALARM_STOP -> stopAlarm()
-        }
-        return START_NOT_STICKY
-    }
-
-    private fun startOrResume(seconds: Long) {
-        val safeSeconds = seconds.coerceIn(1L, 10800L)
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val end = SystemClock.elapsedRealtime() + safeSeconds * 1000L
-
-        prefs.edit()
-            .putBoolean(KEY_RUNNING, true)
-            .putBoolean(KEY_PAUSED, false)
-            .putBoolean(KEY_ALARMING, false)
-            .putLong(KEY_REMAINING, safeSeconds)
-            .putLong(KEY_END_ELAPSED, end)
-            .putLong(KEY_CONFIGURED, safeSeconds)
-            .apply()
-
-        startForeground(
-            NOTIFICATION_ID,
-            buildNotification("語音計時器正在倒數", formatTime(safeSeconds), true)
-        )
-        scheduleAlarms(safeSeconds)
-    }
-
-    private fun pauseInternal() {
-        val remaining = readRemaining()
-        cancelAlarms()
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-            .putBoolean(KEY_RUNNING, false)
-            .putBoolean(KEY_PAUSED, true)
-            .putLong(KEY_REMAINING, remaining)
-            .remove(KEY_END_ELAPSED)
-            .apply()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    private fun stopInternal() {
-        cancelAlarms()
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-            .putBoolean(KEY_RUNNING, false)
-            .putBoolean(KEY_PAUSED, false)
-            .remove(KEY_END_ELAPSED)
-            .apply()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    private fun handleReminder() {
-        if (!readRunning()) {
-            stopSelf()
-            return
-        }
-        val remaining = readRemaining()
-        if (remaining <= 0L) {
-            handleFinish()
-            return
-        }
-
-        startForeground(
-            NOTIFICATION_ID,
-            buildNotification("3 分鐘提醒", "還剩 3 分鐘", true)
-        )
-        speak("還剩 3 分鐘")
-        cancelReminderAlarmOnly()
-    }
-
-    private fun handleFinish() {
-        cancelAlarms()
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-            .putBoolean(KEY_RUNNING, false)
-            .putBoolean(KEY_PAUSED, false)
-            .putBoolean(KEY_ALARMING, true)
-            .putLong(KEY_REMAINING, 0L)
-            .remove(KEY_END_ELAPSED)
-            .apply()
-
-        startForeground(
-            NOTIFICATION_ID,
-            buildNotification("語音計時器", "時間到了！碰觸螢幕或按鍵停止", false)
-        )
-        speak("時間到了！")
-        playAlarmSound()
-    }
-
-    private fun stopAlarm() {
-        alarmRingtone?.stop()
-        alarmRingtone = null
-        tts?.stop()
-        cancelAlarms()
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val configured = prefs.getLong(KEY_CONFIGURED, 300L).coerceIn(1L, 10800L)
-
-        prefs.edit()
-            .putBoolean(KEY_RUNNING, false)
-            .putBoolean(KEY_PAUSED, false)
-            .putBoolean(KEY_ALARMING, false)
-            .putLong(KEY_REMAINING, configured)
-            .remove(KEY_END_ELAPSED)
-            .apply()
-
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    private fun scheduleAlarms(seconds: Long) {
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        cancelAlarms()
-
-        val now = SystemClock.elapsedRealtime()
-        val finishAt = now + seconds * 1000L
-
-        val finishIntent = Intent(this, AlarmReceiver::class.java).apply {
-            action = ACTION_FINISH
-            setPackage(packageName)
-        }
-        val finishPending = PendingIntent.getBroadcast(
-            this,
-            FINISH_REQUEST,
-            finishIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        setExact(alarmManager, finishAt, finishPending)
-
-        if (seconds > 180L) {
-            val reminderIntent = Intent(this, AlarmReceiver::class.java).apply {
-                action = ACTION_REMINDER
-                setPackage(packageName)
-            }
-            val reminderPending = PendingIntent.getBroadcast(
-                this,
-                REMINDER_REQUEST,
-                reminderIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            setExact(alarmManager, finishAt - 180_000L, reminderPending)
-        }
-    }
-
-    private fun setExact(
-        alarmManager: AlarmManager,
-        triggerAt: Long,
-        pendingIntent: PendingIntent
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        } else {
-            alarmManager.setExact(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        }
-    }
-
-    private fun cancelAlarms() {
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        val reminderIntent = Intent(this, AlarmReceiver::class.java).apply {
-            action = ACTION_REMINDER
-            setPackage(packageName)
-        }
-        val reminderPending = PendingIntent.getBroadcast(
-            this,
-            REMINDER_REQUEST,
-            reminderIntent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-        if (reminderPending != null) alarmManager.cancel(reminderPending)
-
-        val finishIntent = Intent(this, AlarmReceiver::class.java).apply {
-            action = ACTION_FINISH
-            setPackage(packageName)
-        }
-        val finishPending = PendingIntent.getBroadcast(
-            this,
-            FINISH_REQUEST,
-            finishIntent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-        if (finishPending != null) alarmManager.cancel(finishPending)
-    }
-
-    private fun cancelReminderAlarmOnly() {
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, AlarmReceiver::class.java).apply {
-            action = ACTION_REMINDER
-            setPackage(packageName)
-        }
-        val pending = PendingIntent.getBroadcast(
-            this,
-            REMINDER_REQUEST,
-            intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-        if (pending != null) alarmManager.cancel(pending)
-    }
-
-    private fun readRunning(): Boolean =
-        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_RUNNING, false)
-
-    private fun readRemaining(): Long {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_RUNNING, false)) {
-            return prefs.getLong(KEY_REMAINING, prefs.getLong(KEY_CONFIGURED, 300L))
-                .coerceAtLeast(1L)
-        }
-
-        val end = prefs.getLong(KEY_END_ELAPSED, 0L)
-        if (end <= 0L) return prefs.getLong(KEY_REMAINING, 0L).coerceAtLeast(0L)
-
-        val remaining = ((end - SystemClock.elapsedRealtime()) / 1000L).coerceAtLeast(0L)
-        prefs.edit().putLong(KEY_REMAINING, remaining).apply()
-        return remaining
-    }
-
-    private fun buildNotification(title: String, text: String, ongoing: Boolean): Notification {
-        val builder = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setOngoing(ongoing)
-            .setOnlyAlertOnce(true)
-            .setCategory(Notification.CATEGORY_ALARM)
-
-        val stopIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val stopPending = PendingIntent.getActivity(
-            this,
-            3003,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        builder.setContentIntent(stopPending)
-
-        return builder.build()
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
-        val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "VoiceTimer 計時服務",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "VoiceTimer 背景倒數服務"
-            enableVibration(false)
-            setSound(null, null)
-        }
-        manager.createNotificationChannel(channel)
-    }
-
-    private fun speak(text: String) {
-        if (ttsReady) {
-            speakNow(text)
-        } else {
-            pendingSpeech = text
-        }
-    }
-
-    private fun speakNow(text: String) {
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "VoiceTimerSpeech")
-    }
-
-    private fun playAlarmSound() {
-        try {
-            alarmRingtone?.stop()
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            alarmRingtone = RingtoneManager.getRingtone(applicationContext, uri)
-            alarmRingtone?.play()
-        } catch (_: Exception) {
-            alarmRingtone = null
-        }
-    }
-
-    private fun formatTime(seconds: Long): String {
-        val minutes = seconds / 60
-        val secs = seconds % 60
-        return String.format(Locale.TAIWAN, "%02d:%02d", minutes, secs)
-    }
-
-    override fun onDestroy() {
-        alarmRingtone?.stop()
-        alarmRingtone = null
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
-        super.onDestroy()
-    }
+import java.text.SimpleDateFormat
+import java.util.*
+ 
+class TimerService:Service(),TextToSpeech.OnInitListener{
+ private var tts:TextToSpeech?=null;private var ready=false;private var pending:String?=null;private var ring:Ringtone?=null
+ companion object{
+  const val ACTION_START="com.example.voicetimer.START";const val ACTION_PAUSE="com.example.voicetimer.PAUSE";const val ACTION_RESUME="com.example.voicetimer.RESUME";const val ACTION_STOP="com.example.voicetimer.STOP";const val ACTION_REMINDER="com.example.voicetimer.REMINDER";const val ACTION_FINISH="com.example.voicetimer.FINISH";const val ACTION_ALARM_STOP="com.example.voicetimer.ALARM_STOP";const val ACTION_CLOCK_CHIME="com.example.voicetimer.CLOCK_CHIME";const val EXTRA_SECONDS="seconds"
+  const val P="VoiceTimerPrefs";const val RUN="running";const val PAUSE="paused";const val REM="remaining_seconds";const val END="end_elapsed";const val CFG="configured_seconds";const val ALARM="alarming";const val TOTAL="total_work_seconds";const val COUNT="total_work_count";const val INTERVAL="setting_interval_remind_mode";const val MUSIC="setting_music_type";const val CHIME="setting_clock_chime_mode";const val CH="voice_timer_running_v5";const val NID=10;const val RR=2001;const val FR=2002;const val CR=2003
+ }
+ override fun onCreate(){super.onCreate();channel();tts=TextToSpeech(this,this)}
+ override fun onInit(s:Int){if(s==TextToSpeech.SUCCESS){val r=tts?.setLanguage(Locale.TAIWAN);ready=r!=TextToSpeech.LANG_MISSING_DATA&&r!=TextToSpeech.LANG_NOT_SUPPORTED;pending?.let{say(it);pending=null}}}
+ override fun onBind(i:Intent?):IBinder?=null
+ override fun onStartCommand(i:Intent?,f:Int,id:Int):Int{when(i?.action){ACTION_START->startNew(i.getLongExtra(EXTRA_SECONDS,300));ACTION_RESUME->resume();ACTION_PAUSE->pause();ACTION_STOP->stopTimer();ACTION_REMINDER->reminder();ACTION_FINISH->finishTimer();ACTION_CLOCK_CHIME->chime();ACTION_ALARM_STOP->stopAlarm()};return START_NOT_STICKY}
+ private fun prefs()=getSharedPreferences(P,MODE_PRIVATE)
+ private fun startNew(s:Long){val n=s.coerceIn(1,10800);val e=SystemClock.elapsedRealtime()+n*1000;prefs().edit().putBoolean(RUN,true).putBoolean(PAUSE,false).putBoolean(ALARM,false).putLong(REM,n).putLong(CFG,n).putLong(END,e).apply();startForeground(NID,note("浩川計時器正在倒數",fmt(n),true));schedule(n)}
+ private fun resume(){val n=prefs().getLong(REM,0).coerceIn(1,10800);if(n<=0)return;val e=SystemClock.elapsedRealtime()+n*1000;prefs().edit().putBoolean(RUN,true).putBoolean(PAUSE,false).putLong(END,e).apply();startForeground(NID,note("浩川計時器正在倒數",fmt(n),true));schedule(n)}
+ private fun pause(){val n=remaining();cancelAll();prefs().edit().putBoolean(RUN,false).putBoolean(PAUSE,true).putLong(REM,n).remove(END).apply();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()}
+ private fun stopTimer(){cancelAll();prefs().edit().putBoolean(RUN,false).putBoolean(PAUSE,false).remove(END).apply();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()}
+ private fun reminder(){if(!prefs().getBoolean(RUN,false)){stopSelf();return};val n=remaining();if(n<=0){finishTimer();return};startForeground(NID,note("浩川計時器提醒","還剩 "+speechTime(n),true));say("還剩 "+speechTime(n));nextReminder(n)}
+ private fun finishTimer(){val p=prefs();val cfg=p.getLong(CFG,0);cancelAll();p.edit().putBoolean(RUN,false).putBoolean(PAUSE,false).putBoolean(ALARM,true).putLong(REM,0).remove(END).putLong(TOTAL,p.getLong(TOTAL,0)+cfg).putLong(COUNT,p.getLong(COUNT,0)+1).apply();startForeground(NID,note("浩川計時器","時間到了！",false));say("時間到了！");alarmSound()}
+ private fun stopAlarm(){ring?.stop();ring=null;tts?.stop();cancelAll();val cfg=prefs().getLong(CFG,300).coerceIn(1,10800);prefs().edit().putBoolean(RUN,false).putBoolean(PAUSE,false).putBoolean(ALARM,false).putLong(REM,cfg).remove(END).apply();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()}
+ private fun schedule(n:Long){cancelAll();val am=getSystemService(ALARM_SERVICE) as AlarmManager;setExact(am,SystemClock.elapsedRealtime()+n*1000,pending(ACTION_FINISH,FR));nextReminder(n);clock()}
+ private fun nextReminder(n:Long){val mode=prefs().getInt(INTERVAL,2);val iv=when(mode){1->180L;2->300L;else->0};if(iv<=0||n<=iv){cancelReminder();return};val am=getSystemService(ALARM_SERVICE) as AlarmManager;setExact(am,SystemClock.elapsedRealtime()+iv*1000,pending(ACTION_REMINDER,RR))}
+ private fun clock(){val mode=prefs().getInt(CHIME,0);if(mode==0){cancelClock();return};val step=when(mode){1->60;2->30;else->15};val now=Calendar.getInstance();val next=Calendar.getInstance();next.set(Calendar.SECOND,0);next.set(Calendar.MILLISECOND,0);next.add(Calendar.MINUTE,step-(now.get(Calendar.MINUTE)%step));if(!next.after(now))next.add(Calendar.MINUTE,step);val am=getSystemService(ALARM_SERVICE) as AlarmManager;val pi=pending(ACTION_CLOCK_CHIME,CR);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next.timeInMillis,pi)else am.setExact(AlarmManager.RTC_WAKEUP,next.timeInMillis,pi)}
+ private fun chime(){if(!prefs().getBoolean(RUN,false)){stopSelf();return};say("現在 "+SimpleDateFormat("a h 點",Locale.TAIWAN).format(Date()));notifySound();clock()}
+ private fun pending(a:String,r:Int)=PendingIntent.getBroadcast(this,r,Intent(this,AlarmReceiver::class.java).apply{action=a;setPackage(packageName)},PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+ private fun setExact(am:AlarmManager,t:Long,p:PendingIntent){if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,t,p)else am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP,t,p)}
+ private fun cancelAll(){cancelReminder();cancelClock();val am=getSystemService(ALARM_SERVICE) as AlarmManager;am.cancel(noCreate(ACTION_FINISH,FR))}
+ private fun cancelReminder(){(getSystemService(ALARM_SERVICE) as AlarmManager).cancel(noCreate(ACTION_REMINDER,RR))}
+ private fun cancelClock(){(getSystemService(ALARM_SERVICE) as AlarmManager).cancel(noCreate(ACTION_CLOCK_CHIME,CR))}
+ private fun noCreate(a:String,r:Int):PendingIntent{val i=Intent(this,AlarmReceiver::class.java).apply{action=a;setPackage(packageName)};return PendingIntent.getBroadcast(this,r,i,PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?:PendingIntent.getBroadcast(this,r,i,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)}
+ private fun remaining():Long{val p=prefs();if(!p.getBoolean(RUN,false))return p.getLong(REM,p.getLong(CFG,300)).coerceAtLeast(0);val e=p.getLong(END,0);val n=if(e>0)((e-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0)else p.getLong(REM,0);p.edit().putLong(REM,n).apply();return n}
+ private fun channel(){if(Build.VERSION.SDK_INT>=26)(getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(NotificationChannel(CH,"VoiceTimer 計時服務",NotificationManager.IMPORTANCE_LOW))}
+ private fun note(t:String,x:String,o:Boolean)=Notification.Builder(this,CH).setContentTitle(t).setContentText(x).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setOngoing(o).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_ALARM).build()
+ private fun say(s:String){if(ready)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerSpeech")else pending=s}
+ private fun alarmSound(){val type=when(prefs().getInt(MUSIC,0)){1->RingtoneManager.TYPE_NOTIFICATION;2->RingtoneManager.TYPE_RINGTONE;else->RingtoneManager.TYPE_ALARM};play(type)}
+ private fun notifySound()=play(RingtoneManager.TYPE_NOTIFICATION)
+ private fun play(type:Int){try{ring?.stop();val u=RingtoneManager.getDefaultUri(type)?:RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);ring=RingtoneManager.getRingtone(applicationContext,u);ring?.play()}catch(_:Exception){}}
+ private fun fmt(n:Long)=String.format(Locale.TAIWAN,"%02d:%02d",n/60,n%60)
+ private fun speechTime(n:Long):String{val m=n/60;val s=n%60;return if(m>0&&s>0)"$m 分 $s 秒" else if(m>0)"$m 分鐘" else "$s 秒"}
+ override fun onDestroy(){ring?.stop();tts?.stop();tts?.shutdown();ring=null;tts=null;super.onDestroy()}
 }
