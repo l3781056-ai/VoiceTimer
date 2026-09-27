@@ -21,6 +21,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var pendingSpeech: String? = null
+    private var alarmRingtone: android.media.Ringtone? = null
 
     companion object {
         const val ACTION_START = "com.example.voicetimer.START"
@@ -167,6 +168,9 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun stopAlarm() {
+        alarmRingtone?.stop()
+        alarmRingtone = null
+        tts?.stop()
         cancelAlarms()
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         val configured = prefs.getLong(KEY_CONFIGURED, 300L).coerceIn(1L, 10800L)
@@ -351,11 +355,13 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
 
     private fun playAlarmSound() {
         try {
+            alarmRingtone?.stop()
             val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            val ringtone = RingtoneManager.getRingtone(applicationContext, uri)
-            ringtone?.play()
+            alarmRingtone = RingtoneManager.getRingtone(applicationContext, uri)
+            alarmRingtone?.play()
         } catch (_: Exception) {
+            alarmRingtone = null
         }
     }
 
@@ -366,6 +372,8 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        alarmRingtone?.stop()
+        alarmRingtone = null
         tts?.stop()
         tts?.shutdown()
         tts = null
