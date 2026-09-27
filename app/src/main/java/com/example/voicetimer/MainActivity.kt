@@ -59,16 +59,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private val speechLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                val spoken = result.data
-                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                    ?.firstOrNull() ?: ""
-                handleSpokenTime(spoken)
-            }
-        }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -419,7 +409,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             )
         }
         try {
-            speechLauncher.launch(intent)
+            startActivityForResult(intent, 1001)
         } catch (_: Exception) {
             Toast.makeText(
                 this,
@@ -461,6 +451,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     101
                 )
             }
+        }
+    }
+
+    @Deprecated("Use Activity Result API when migrating")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001 && resultCode == RESULT_OK) {
+            val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: ""
+            handleSpokenTime(spoken)
         }
     }
 
