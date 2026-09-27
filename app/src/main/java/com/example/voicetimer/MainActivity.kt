@@ -15,6 +15,7 @@ import android.view.*
 import android.widget.*
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.min
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var display: TextView
@@ -22,6 +23,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var status: TextView
     private lateinit var total: TextView
     private lateinit var control: Button
+    private lateinit var timerRow: LinearLayout
     private lateinit var prefs: SharedPreferences
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -39,31 +41,201 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private val ticker=object:Runnable{override fun run(){refresh();handler.postDelayed(this,500)}}
 
-    override fun onCreate(b:Bundle?){super.onCreate(b);prefs=getSharedPreferences(PREFS,MODE_PRIVATE);tts=TextToSpeech(this,this);requestNotification();build();}
+    override fun onCreate(b:Bundle?){
+        super.onCreate(b)
+        prefs=getSharedPreferences(PREFS,MODE_PRIVATE)
+        tts=TextToSpeech(this,this)
+        requestNotification()
+        build()
+    }
 
     private fun build(){
-        val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setBackgroundColor(Color.BLACK);setPadding(24,20,24,20)}
-        val head=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val title=TextView(this).apply{text="浩川計時器";textSize=18f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);gravity=Gravity.CENTER_VERTICAL;layoutParams=LinearLayout.LayoutParams(0,60,1f)}
-        val set=Button(this).apply{text="⚙";textSize=22f;setTextColor(Color.WHITE);backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT);setPadding(8,0,8,0);setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}}
-        head.addView(title);head.addView(set)
-        val timeRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;layoutParams=LinearLayout.LayoutParams(-1,0,1f)}
-        display=TextView(this).apply{textSize=96f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);gravity=Gravity.CENTER;layoutParams=LinearLayout.LayoutParams(0,-1,2f)}
-        secondsDisplay=TextView(this).apply{textSize=32f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);gravity=Gravity.CENTER;layoutParams=LinearLayout.LayoutParams(0,-1,1f)}
-        timeRow.addView(display);timeRow.addView(secondsDisplay)
-        total=TextView(this).apply{textSize=16f;setTextColor(Color.WHITE);gravity=Gravity.CENTER}
-        val reset=Button(this).apply{text="清除";textSize=14f;minWidth=0;minimumWidth=0;minHeight=0;minimumHeight=0;setPadding(18,4,18,4);setOnClickListener{AlertDialog.Builder(this@MainActivity).setTitle("清除累計").setMessage("確定將累計時間與完成次數歸零嗎？").setNegativeButton("取消",null).setPositiveButton("確定"){_,_->prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply();refresh()}.show()}}
-        val voice=Button(this).apply{text="🎤 語音輸入時間";textSize=19f;setTextColor(Color.WHITE);backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT);setPadding(12,4,12,4);layoutParams=LinearLayout.LayoutParams(-1,56).apply{topMargin=8};setOnClickListener{speech()}}
-        control=Button(this).apply{text="開始";textSize=22f;setTypeface(null,Typeface.BOLD);setTextColor(Color.WHITE);backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT);setPadding(12,4,12,4);layoutParams=LinearLayout.LayoutParams(-1,56).apply{topMargin=0;bottomMargin=4};setOnClickListener{controlClick()}}
-        val totalRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;layoutParams=LinearLayout.LayoutParams(-1,ViewGroup.LayoutParams.WRAP_CONTENT).apply{bottomMargin=12}}
-        total.layoutParams=LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f).apply{leftMargin=8}
+        val root=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(Color.BLACK)
+            setPadding(12,0,12,0)
+        }
+
+        if(Build.VERSION.SDK_INT>=30){
+            window.setDecorFitsSystemWindows(false)
+        }else{
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility=
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        }
+
+        ViewCompatInsets.apply(root)
+
+        val head=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            layoutParams=LinearLayout.LayoutParams(-1,52)
+        }
+
+        val title=TextView(this).apply{
+            text="浩川計時器"
+            textSize=18f
+            setTextColor(Color.WHITE)
+            setTypeface(null,Typeface.BOLD)
+            gravity=Gravity.CENTER_VERTICAL
+            layoutParams=LinearLayout.LayoutParams(0,-1,1f)
+        }
+
+        val set=Button(this).apply{
+            text="⚙"
+            textSize=22f
+            setTextColor(Color.WHITE)
+            backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
+            setPadding(8,0,8,0)
+            layoutParams=LinearLayout.LayoutParams(52,-1)
+            setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}
+        }
+        head.addView(title)
+        head.addView(set)
+
+        timerRow=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER
+            layoutParams=LinearLayout.LayoutParams(-1,0,1f).apply{
+                topMargin=4
+                bottomMargin=4
+            }
+        }
+
+        display=TextView(this).apply{
+            textSize=96f
+            setTextColor(Color.WHITE)
+            setTypeface(null,Typeface.BOLD)
+            gravity=Gravity.CENTER
+            includeFontPadding=true
+            layoutParams=LinearLayout.LayoutParams(0,-1,2f)
+        }
+
+        secondsDisplay=TextView(this).apply{
+            textSize=32f
+            setTextColor(Color.WHITE)
+            setTypeface(null,Typeface.BOLD)
+            gravity=Gravity.CENTER
+            includeFontPadding=true
+            layoutParams=LinearLayout.LayoutParams(0,-1,1f)
+        }
+
+        timerRow.addView(display)
+        timerRow.addView(secondsDisplay)
+
+        val bottom=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
+            layoutParams=LinearLayout.LayoutParams(-1,ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+
+        val totalRow=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            layoutParams=LinearLayout.LayoutParams(-1,44)
+        }
+
+        total=TextView(this).apply{
+            textSize=16f
+            setTextColor(Color.WHITE)
+            gravity=Gravity.CENTER
+            layoutParams=LinearLayout.LayoutParams(0,-1,1f).apply{leftMargin=8}
+        }
+
+        val reset=Button(this).apply{
+            text="清除"
+            textSize=14f
+            minWidth=0
+            minimumWidth=0
+            minHeight=0
+            minimumHeight=0
+            setPadding(18,4,18,4)
+            layoutParams=LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,44)
+            setOnClickListener{
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("清除累計")
+                    .setMessage("確定將累計時間與完成次數歸零嗎？")
+                    .setNegativeButton("取消",null)
+                    .setPositiveButton("確定"){_,_->
+                        prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply()
+                        refresh()
+                    }.show()
+            }
+        }
+
         totalRow.addView(total)
         totalRow.addView(reset)
-        root.addView(head);root.addView(timeRow);root.addView(totalRow);root.addView(voice);root.addView(control);setContentView(root)
+
+        val voice=Button(this).apply{
+            text="🎤 語音輸入時間"
+            textSize=19f
+            setTextColor(Color.WHITE)
+            backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
+            setPadding(12,4,12,4)
+            layoutParams=LinearLayout.LayoutParams(-1,52).apply{topMargin=4}
+            setOnClickListener{speech()}
+        }
+
+        control=Button(this).apply{
+            text="開始"
+            textSize=22f
+            setTypeface(null,Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
+            setPadding(12,4,12,4)
+            layoutParams=LinearLayout.LayoutParams(-1,56).apply{topMargin=0;bottomMargin=4}
+            setOnClickListener{controlClick()}
+        }
+
+        bottom.addView(totalRow)
+        bottom.addView(voice)
+        bottom.addView(control)
+
+        root.addView(head)
+        root.addView(timerRow)
+        root.addView(bottom)
+        setContentView(root)
+
+        timerRow.addOnLayoutChangeListener{_,_,_,_,_,_,_,_,_->adjustTimerTextSize()}
+
         display.setOnTouchListener(object:View.OnTouchListener{
-            var sx=0f;var sy=0f
-            override fun onTouch(v:View,e:MotionEvent):Boolean{when(e.action){MotionEvent.ACTION_DOWN->{sx=e.x;sy=e.y;return true};MotionEvent.ACTION_UP->{val dy=sy-e.y;val running=prefs.getBoolean(RUNNING,false);if(running&&!prefs.getBoolean(PAUSED,false)&&abs(dy)<60){speakRemaining()}else if(!running&&abs(dy)>60){val d=if(sx<display.width)300L else 60L;adjust(if(dy>0)d else -d)};return true}};return true}
+            var sx=0f
+            var sy=0f
+            override fun onTouch(v:View,e:MotionEvent):Boolean{
+                when(e.action){
+                    MotionEvent.ACTION_DOWN->{sx=e.x;sy=e.y;return true}
+                    MotionEvent.ACTION_UP->{
+                        val dy=sy-e.y
+                        val running=prefs.getBoolean(RUNNING,false)
+                        if(running&&!prefs.getBoolean(PAUSED,false)&&abs(dy)<60){
+                            speakRemaining()
+                        }else if(!running&&abs(dy)>60){
+                            val d=if(sx<display.width)300L else 60L
+                            adjust(if(dy>0)d else -d)
+                        }
+                        return true
+                    }
+                }
+                return true
+            }
         })
+    }
+
+    private fun adjustTimerTextSize(){
+        if(!::timerRow.isInitialized || timerRow.width<=0 || timerRow.height<=0)return
+
+        val density=resources.displayMetrics.scaledDensity
+        val rowHeight=timerRow.height.toFloat()
+        val minuteWidth=timerRow.width*2f/3f
+        val maxByHeight=(rowHeight*0.72f)/density
+        val maxByWidth=(minuteWidth*0.72f)/density
+        val minuteSize=min(96f,min(maxByHeight,maxByWidth)).coerceAtLeast(28f)
+
+        display.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize)
+        secondsDisplay.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize/3f)
     }
 
     private fun controlClick(){
@@ -75,20 +247,159 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         refresh()
     }
-    private fun send(action:String,seconds:Long?=null){val i=Intent(this,TimerService::class.java).apply{this.action=action;if(seconds!=null)putExtra(TimerService.EXTRA_SECONDS,seconds)};if(Build.VERSION.SDK_INT>=26)startForegroundService(i) else startService(i)}
-    private fun adjust(d:Long){val n=(prefs.getLong(CONFIGURED,300)+d).coerceIn(60,10800);prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply();speak("設定 "+(n/60)+" 分鐘");refresh()}
-    private fun speech(){if(Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),REQ_RECORD_AUDIO);return};try{startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);putExtra(RecognizerIntent.EXTRA_LANGUAGE,"zh-TW")},1001)}catch(_:Exception){Toast.makeText(this,"裝置未支援語音識別服務",Toast.LENGTH_SHORT).show()}}
-    override fun onActivityResult(r:Int,c:Int,d:Intent?){super.onActivityResult(r,c,d);if(r==1001&&c==RESULT_OK){val s=d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:"";parse(s)}}
-    private fun parse(s:String){val x=s.replace(" ","").replace("個","");val h=Regex("(\\d+)小時").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0;val m=Regex("(\\d+)分").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0;val sec=Regex("(\\d+)秒").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0;var n=h*3600+m*60+sec;if(h==0L&&m==0L&&sec==0L)n=(Regex("^\\d+$").find(x)?.value?.toLongOrNull()?:0)*60;if(n<=0){Toast.makeText(this,"未能辨識時間："+s,Toast.LENGTH_SHORT).show();return};n=n.coerceIn(1,10800);prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply();speak("開始計時 "+speechTime(n));send(TimerService.ACTION_START,n)}
-    private fun remain():Long{if(!prefs.getBoolean(RUNNING,false))return prefs.getLong(REMAINING,prefs.getLong(CONFIGURED,300)).coerceAtLeast(0);val e=prefs.getLong(END,0);return if(e>0)((e-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0) else prefs.getLong(REMAINING,0)}
-    private fun speakRemaining(){val n=remain();speak(if(n/60>0)"還剩 "+(n/60)+" 分鐘" else "還剩 "+n+" 秒")}
-    private fun speechTime(n:Long):String{val m=n/60;val s=n%60;return if(m>0&&s>0)"$m 分 $s 秒" else if(m>0)"$m 分鐘" else "$s 秒"}
-    private fun speak(s:String){if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")}
-    private fun refresh(){val n=remain();display.text=String.format(Locale.TAIWAN,"%02d",n/60);secondsDisplay.text=String.format(Locale.TAIWAN,"%02d",n%60);val t=prefs.getLong(TOTAL,0);total.text="累計 "+(t/60)+" 分 "+prefs.getLong(COUNT,0)+" 次";control.text=when{prefs.getBoolean(ALARMING,false)->"停止警報";prefs.getBoolean(PAUSED,false)->"繼續（長按重設）";prefs.getBoolean(RUNNING,false)->"暫停";else->"開始"}}
-    override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==REQ_RECORD_AUDIO&&grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)speech()}
-    private fun requestNotification(){if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),101)}
-    override fun onInit(s:Int){if(s==TextToSpeech.SUCCESS){tts?.language=Locale.TAIWAN;ttsReady=true}}
-    override fun onResume(){super.onResume();handler.post(ticker)}
-    override fun onPause(){super.onPause();handler.removeCallbacks(ticker)}
-    override fun onDestroy(){tts?.stop();tts?.shutdown();super.onDestroy()}
+
+    private fun send(action:String,seconds:Long?=null){
+        val i=Intent(this,TimerService::class.java).apply{
+            this.action=action
+            if(seconds!=null)putExtra(TimerService.EXTRA_SECONDS,seconds)
+        }
+        if(Build.VERSION.SDK_INT>=26)startForegroundService(i) else startService(i)
+    }
+
+    private fun adjust(d:Long){
+        val n=(prefs.getLong(CONFIGURED,300)+d).coerceIn(60,10800)
+        prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply()
+        speak("設定 "+(n/60)+" 分鐘")
+        refresh()
+    }
+
+    private fun speech(){
+        if(Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),REQ_RECORD_AUDIO)
+            return
+        }
+        try{
+            startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE,"zh-TW")
+            },1001)
+        }catch(_:Exception){
+            Toast.makeText(this,"裝置未支援語音識別服務",Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onActivityResult(r:Int,c:Int,d:Intent?){
+        super.onActivityResult(r,c,d)
+        if(r==1001&&c==RESULT_OK){
+            val s=d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:""
+            parse(s)
+        }
+    }
+
+    private fun parse(s:String){
+        val x=s.replace(" ","").replace("個","")
+        val h=Regex("(\\d+)小時").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0
+        val m=Regex("(\\d+)分").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0
+        val sec=Regex("(\\d+)秒").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0
+        var n=h*3600+m*60+sec
+        if(h==0L&&m==0L&&sec==0L)n=(Regex("^\\d+$").find(x)?.value?.toLongOrNull()?:0)*60
+        if(n<=0){
+            Toast.makeText(this,"未能辨識時間："+s,Toast.LENGTH_SHORT).show()
+            return
+        }
+        n=n.coerceIn(1,10800)
+        prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply()
+        speak("開始計時 "+speechTime(n))
+        send(TimerService.ACTION_START,n)
+    }
+
+    private fun remain():Long{
+        if(!prefs.getBoolean(RUNNING,false))return prefs.getLong(REMAINING,prefs.getLong(CONFIGURED,300)).coerceAtLeast(0)
+        val e=prefs.getLong(END,0)
+        return if(e>0)((e-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0) else prefs.getLong(REMAINING,0)
+    }
+
+    private fun speakRemaining(){
+        val n=remain()
+        speak(if(n/60>0)"還剩 "+(n/60)+" 分鐘" else "還剩 "+n+" 秒")
+    }
+
+    private fun speechTime(n:Long):String{
+        val m=n/60
+        val s=n%60
+        return if(m>0&&s>0)"$m 分 $s 秒" else if(m>0)"$m 分鐘" else "$s 秒"
+    }
+
+    private fun speak(s:String){
+        if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")
+    }
+
+    private fun refresh(){
+        val n=remain()
+        display.text=String.format(Locale.TAIWAN,"%02d",n/60)
+        secondsDisplay.text=String.format(Locale.TAIWAN,"%02d",n%60)
+        val t=prefs.getLong(TOTAL,0)
+        total.text="累計 "+(t/60)+" 分 "+prefs.getLong(COUNT,0)+" 次"
+        control.text=when{
+            prefs.getBoolean(ALARMING,false)->"停止警報"
+            prefs.getBoolean(PAUSED,false)->"繼續（長按重設）"
+            prefs.getBoolean(RUNNING,false)->"暫停"
+            else->"開始"
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if(requestCode==REQ_RECORD_AUDIO&&grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)speech()
+    }
+
+    private fun requestNotification(){
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),101)
+    }
+
+    override fun onInit(s:Int){
+        if(s==TextToSpeech.SUCCESS){
+            tts?.language=Locale.TAIWAN
+            ttsReady=true
+        }
+    }
+
+    override fun onResume(){
+        super.onResume()
+        handler.post(ticker)
+    }
+
+    override fun onPause(){
+        super.onPause()
+        handler.removeCallbacks(ticker)
+    }
+
+    override fun onDestroy(){
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
+    }
+}
+
+/**
+ * Applies Android status/navigation bar insets without requiring AndroidX.
+ * The activity lays out edge-to-edge, then the root receives safe padding.
+ */
+private object ViewCompatInsets {
+    fun apply(view: View){
+        view.setOnApplyWindowInsetsListener{v,insets->
+            val bars=if(Build.VERSION.SDK_INT>=30){
+                insets.getInsets(WindowInsets.Type.systemBars())
+            }else{
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetLeft.let{
+                    android.graphics.Insets.of(
+                        insets.systemWindowInsetLeft,
+                        insets.systemWindowInsetTop,
+                        insets.systemWindowInsetRight,
+                        insets.systemWindowInsetBottom
+                    )
+                }
+            }
+            v.setPadding(
+                12+bars.left,
+                bars.top,
+                12+bars.right,
+                bars.bottom
+            )
+            insets
+        }
+        view.requestApplyInsets()
+    }
 }
