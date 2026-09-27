@@ -2,468 +2,83 @@ package com.example.voicetimer
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
+import android.app.AlertDialog
+import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
-import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.os.*
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.style.RelativeSizeSpan
-import android.view.GestureDetector
-import android.view.Gravity
-import android.view.MotionEvent
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.view.*
+import android.widget.*
 import java.util.Locale
 import kotlin.math.abs
 
 class MainActivity : Activity(), TextToSpeech.OnInitListener {
-
-    private lateinit var timerDisplay: TextView
-    private lateinit var btnVoice: Button
-    private lateinit var btnControl: Button
+    private lateinit var display: TextView
+    private lateinit var status: TextView
+    private lateinit var total: TextView
+    private lateinit var control: Button
     private lateinit var prefs: SharedPreferences
-
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-
     private val handler = Handler(Looper.getMainLooper())
-    private lateinit var gestureDetector: GestureDetector
 
     companion object {
-        private const val PREFS = "VoiceTimerPrefs"
-        private const val KEY_RUNNING = "running"
-        private const val KEY_PAUSED = "paused"
-        private const val KEY_REMAINING = "remaining_seconds"
-        private const val KEY_CONFIGURED = "configured_seconds"
-        private const val KEY_ALARMING = "alarming"
-        private const val KEY_END_ELAPSED = "end_elapsed"
+        private const val PREFS="VoiceTimerPrefs"
+        private const val RUNNING="running"; private const val PAUSED="paused"
+        private const val REMAINING="remaining_seconds"; private const val CONFIGURED="configured_seconds"
+        private const val ALARMING="alarming"; private const val END="end_elapsed"
+        private const val TOTAL="total_work_seconds"; private const val COUNT="total_work_count"
+        private const val INTERVAL="setting_interval_remind_mode"
     }
 
-    private val updateRunnable = object : Runnable {
-        override fun run() {
-            refreshUi()
-            handler.postDelayed(this, 500)
-        }
-    }
+    private val ticker=object:Runnable{override fun run(){refresh();handler.postDelayed(this,500)}}
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(b:Bundle?){super.onCreate(b);prefs=getSharedPreferences(PREFS,MODE_PRIVATE);tts=TextToSpeech(this,this);requestNotification();build();}
 
-        prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        tts = TextToSpeech(this, this)
-        checkPermissions()
-
-        setupGestures()
-        buildLayout()
-    }
-
-    private fun setupGestures() {
-        gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                val isRunning = prefs.getBoolean(KEY_RUNNING, false)
-                val isPaused = prefs.getBoolean(KEY_PAUSED, false)
-
-                if (isRunning && !isPaused) {
-                    speakCurrentRemaining()
-                }
-                return true
-            }
-
-            override fun onFling(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                velocityX: Float,
-                velocityY: Float
-            ): Boolean {
-                val isRunning = prefs.getBoolean(KEY_RUNNING, false)
-
-                if (isRunning) return false
-
-                if (e1 != null) {
-                    val dy = e1.y - e2.y
-                    if (abs(dy) > 60 && abs(velocityY) > 80) {
-                        val screenWidth = resources.displayMetrics.widthPixels.toFloat()
-                        val delta = if (e1.x < screenWidth * 2f / 3f) 300L else 60L
-                        adjustTime(if (dy > 0) delta else -delta)
-                        return true
-                    }
-                }
-                return false
-            }
+    private fun build(){
+        val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setBackgroundColor(Color.BLACK);setPadding(24,20,24,20)}
+        val head=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
+        val title=TextView(this).apply{text="浩川計時器";textSize=24f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);layoutParams=LinearLayout.LayoutParams(0,60,1f)}
+        val set=Button(this).apply{text="⚙";textSize=22f;setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}}
+        head.addView(title);head.addView(set)
+        val hint=TextView(this).apply{text="左2/3上滑+5分／下滑-5分　右1/3上滑+1分／下滑-1分";textSize=13f;setTextColor(Color.GRAY);gravity=Gravity.CENTER}
+        display=TextView(this).apply{textSize=86f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);gravity=Gravity.CENTER;layoutParams=LinearLayout.LayoutParams(-1,0,1f)}
+        status=TextView(this).apply{textSize=16f;setTextColor(Color.LTGRAY);gravity=Gravity.CENTER}
+        total=TextView(this).apply{textSize=16f;setTextColor(Color.WHITE);gravity=Gravity.CENTER}
+        val reset=Button(this).apply{text="清除累計";setOnClickListener{AlertDialog.Builder(this@MainActivity).setTitle("清除累計").setMessage("確定將累計時間與完成次數歸零嗎？").setNegativeButton("取消",null).setPositiveButton("確定"){_,_->prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply();refresh()}.show()}}
+        val voice=Button(this).apply{text="🎤 語音輸入時間";textSize=19f;setOnClickListener{speech()}}
+        control=Button(this).apply{text="開始";textSize=22f;setTypeface(null,Typeface.BOLD);setTextColor(Color.WHITE);setOnClickListener{controlClick()}}
+        root.addView(head);root.addView(hint);root.addView(display);root.addView(status);root.addView(total);root.addView(reset);root.addView(voice);root.addView(control);setContentView(root)
+        display.setOnTouchListener(object:View.OnTouchListener{
+            var sx=0f;var sy=0f
+            override fun onTouch(v:View,e:MotionEvent):Boolean{when(e.action){MotionEvent.ACTION_DOWN->{sx=e.x;sy=e.y;return true};MotionEvent.ACTION_UP->{val dy=sy-e.y;val running=prefs.getBoolean(RUNNING,false);if(running&&!prefs.getBoolean(PAUSED,false)&&abs(dy)<60){speakRemaining()}else if(!running&&abs(dy)>60){val d=if(sx<display.width*2f/3f)300L else 60L;adjust(if(dy>0)d else -d)};return true}};return true}
         })
     }
 
-    override fun onTouchEvent(event: MotionEvent?): Boolean {
-        if (event != null && gestureDetector.onTouchEvent(event)) {
-            return true
+    private fun controlClick(){
+        when{
+            prefs.getBoolean(ALARMING,false)->send(TimerService.ACTION_ALARM_STOP)
+            prefs.getBoolean(RUNNING,false)&&!prefs.getBoolean(PAUSED,false)->send(TimerService.ACTION_PAUSE)
+            prefs.getBoolean(PAUSED,false)->send(TimerService.ACTION_RESUME)
+            else->send(TimerService.ACTION_START,prefs.getLong(CONFIGURED,300).coerceIn(1,10800))
         }
-        return super.onTouchEvent(event)
+        refresh()
     }
-
-    private fun buildLayout() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.BLACK)
-            setPadding(30, 40, 30, 40)
-        }
-
-        val hintText = TextView(this).apply {
-            text = "左2/3區：上滑+5分／下滑-5分　右1/3區：上滑+1分／下滑-1分"
-            textSize = 14f
-            setTextColor(Color.DKGRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, 10, 0, 10)
-        }
-
-        timerDisplay = TextView(this).apply {
-            textSize = 86f
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1.0f
-            )
-        }
-
-        btnVoice = Button(this).apply {
-            text = "🎤 語音輸入時間"
-            textSize = 20f
-            setBackgroundColor(Color.parseColor("#333333"))
-            setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(20, 10, 20, 15)
-            }
-            setOnClickListener {
-                startSpeechRecognition()
-            }
-        }
-
-        btnControl = Button(this).apply {
-            text = "開始"
-            textSize = 22f
-            setTypeface(null, Typeface.BOLD)
-            setBackgroundColor(Color.parseColor("#007AFF"))
-            setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(20, 10, 20, 20)
-            }
-            setOnClickListener {
-                handleControlClick()
-            }
-            setOnLongClickListener {
-                val isPaused = prefs.getBoolean(KEY_PAUSED, false)
-                if (isPaused) {
-                    resetToConfigured()
-                    Toast.makeText(
-                        this@MainActivity,
-                        "已重設為上次時間",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-
-        root.addView(hintText)
-        root.addView(timerDisplay)
-        root.addView(btnVoice)
-        root.addView(btnControl)
-
-        setContentView(root)
-    }
-
-    private fun handleControlClick() {
-        val isAlarming = prefs.getBoolean(KEY_ALARMING, false)
-        val isRunning = prefs.getBoolean(KEY_RUNNING, false)
-        val isPaused = prefs.getBoolean(KEY_PAUSED, false)
-
-        when {
-            isAlarming -> stopAlarmSound()
-
-            isRunning && !isPaused -> {
-                val intent = Intent(this, TimerService::class.java).apply {
-                    action = TimerService.ACTION_PAUSE
-                }
-                startForegroundService(intent)
-            }
-
-            isPaused -> {
-                val intent = Intent(this, TimerService::class.java).apply {
-                    action = TimerService.ACTION_RESUME
-                }
-                startForegroundService(intent)
-            }
-
-            else -> {
-                val configured = prefs.getLong(KEY_CONFIGURED, 300L)
-                val intent = Intent(this, TimerService::class.java).apply {
-                    action = TimerService.ACTION_START
-                    putExtra(TimerService.EXTRA_SECONDS, configured)
-                }
-                startForegroundService(intent)
-            }
-        }
-        refreshUi()
-    }
-
-    private fun stopAlarmSound() {
-        val intent = Intent(this, TimerService::class.java).apply {
-            action = TimerService.ACTION_ALARM_STOP
-        }
-        startForegroundService(intent)
-        refreshUi()
-    }
-
-    private fun resetToConfigured() {
-        val configured = prefs.getLong(KEY_CONFIGURED, 300L)
-        prefs.edit()
-            .putBoolean(KEY_RUNNING, false)
-            .putBoolean(KEY_PAUSED, false)
-            .putBoolean(KEY_ALARMING, false)
-            .putLong(KEY_REMAINING, configured)
-            .apply()
-        refreshUi()
-    }
-
-    private fun adjustTime(deltaSeconds: Long) {
-        val configured = prefs.getLong(KEY_CONFIGURED, 300L)
-        var newTime = configured + deltaSeconds
-        newTime = newTime.coerceIn(60L, 10800L)
-
-        prefs.edit()
-            .putLong(KEY_CONFIGURED, newTime)
-            .putLong(KEY_REMAINING, newTime)
-            .apply()
-
-        val m = newTime / 60
-        speak("設定 $m 分鐘")
-        refreshUi()
-    }
-
-    private fun handleSpokenTime(spoken: String) {
-        var totalSec = 0L
-        val clean = spoken.replace(" ", "").replace("個", "")
-
-        val hourMatch = Regex("(\\d+)小時").find(clean)
-        val minMatch = Regex("(\\d+)分").find(clean)
-        val secMatch = Regex("(\\d+)秒").find(clean)
-        val pureNumMatch = Regex("^(\\d+)$").find(clean)
-
-        if (hourMatch != null) {
-            totalSec += (hourMatch.groupValues[1].toLongOrNull() ?: 0L) * 3600L
-        }
-        if (minMatch != null) {
-            totalSec += (minMatch.groupValues[1].toLongOrNull() ?: 0L) * 60L
-        }
-        if (secMatch != null) {
-            totalSec += (secMatch.groupValues[1].toLongOrNull() ?: 0L)
-        }
-        if (hourMatch == null && minMatch == null && secMatch == null && pureNumMatch != null) {
-            totalSec = (pureNumMatch.groupValues[1].toLongOrNull() ?: 1L) * 60L
-        }
-
-        if (totalSec <= 0L) {
-            Toast.makeText(this, "未能辨識時間：「$spoken」", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        totalSec = totalSec.coerceIn(1L, 10800L)
-
-        prefs.edit()
-            .putLong(KEY_CONFIGURED, totalSec)
-            .putLong(KEY_REMAINING, totalSec)
-            .apply()
-
-        val m = totalSec / 60L
-        val s = totalSec % 60L
-        val startPrompt =
-            if (m > 0L && s > 0L) "開始倒數 $m 分 $s 秒"
-            else if (m > 0L) "開始倒數 $m 分鐘"
-            else "開始倒數 $s 秒"
-        speak(startPrompt)
-
-        val intent = Intent(this, TimerService::class.java).apply {
-            action = TimerService.ACTION_START
-            putExtra(TimerService.EXTRA_SECONDS, totalSec)
-        }
-        startForegroundService(intent)
-        refreshUi()
-    }
-
-    private fun speakCurrentRemaining() {
-        val remaining = calculateCurrentRemaining()
-        val m = remaining / 60L
-        val s = remaining % 60L
-
-        val text = if (m > 0L) {
-            "還剩 $m 分鐘"
-        } else {
-            "還剩 $s 秒"
-        }
-        speak(text)
-    }
-
-    private fun calculateCurrentRemaining(): Long {
-        val isRunning = prefs.getBoolean(KEY_RUNNING, false)
-        if (!isRunning) {
-            return prefs.getLong(
-                KEY_REMAINING,
-                prefs.getLong(KEY_CONFIGURED, 300L)
-            )
-        }
-        val end = prefs.getLong(KEY_END_ELAPSED, 0L)
-        if (end <= 0L) return prefs.getLong(KEY_REMAINING, 0L)
-        return ((end - android.os.SystemClock.elapsedRealtime()) / 1000L)
-            .coerceAtLeast(0L)
-    }
-
-    private fun refreshUi() {
-        val isAlarming = prefs.getBoolean(KEY_ALARMING, false)
-        val isRunning = prefs.getBoolean(KEY_RUNNING, false)
-        val isPaused = prefs.getBoolean(KEY_PAUSED, false)
-        val remaining = calculateCurrentRemaining()
-
-        val mStr = String.format(Locale.TAIWAN, "%02d", remaining / 60)
-        val sStr = String.format(Locale.TAIWAN, ":%02d", remaining % 60)
-        val fullText = mStr + sStr
-
-        val spannable = SpannableString(fullText).apply {
-            setSpan(
-                RelativeSizeSpan(0.33f),
-                mStr.length,
-                fullText.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-        }
-        timerDisplay.text = spannable
-
-        when {
-            isAlarming -> {
-                btnControl.text = "停止警報"
-                btnControl.setBackgroundColor(Color.RED)
-                btnVoice.isEnabled = false
-                btnVoice.alpha = 0.3f
-            }
-
-            isRunning && !isPaused -> {
-                btnControl.text = "暫停"
-                btnControl.setBackgroundColor(Color.parseColor("#FF9500"))
-                btnVoice.isEnabled = false
-                btnVoice.alpha = 0.3f
-            }
-
-            isPaused -> {
-                btnControl.text = "繼續 (長按重設)"
-                btnControl.setBackgroundColor(Color.parseColor("#34C759"))
-                btnVoice.isEnabled = true
-                btnVoice.alpha = 1.0f
-            }
-
-            else -> {
-                btnControl.text = "開始"
-                btnControl.setBackgroundColor(Color.parseColor("#007AFF"))
-                btnVoice.isEnabled = true
-                btnVoice.alpha = 1.0f
-            }
-        }
-    }
-
-    private fun startSpeechRecognition() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-            )
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
-            putExtra(
-                RecognizerIntent.EXTRA_PROMPT,
-                "請說出時間，例如「5分鐘」或「3」"
-            )
-        }
-        try {
-            startActivityForResult(intent, 1001)
-        } catch (_: Exception) {
-            Toast.makeText(
-                this,
-                "裝置未支援或找不到語音識別服務",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    private fun speak(text: String) {
-        if (ttsReady) {
-            tts?.speak(
-                text,
-                TextToSpeech.QUEUE_FLUSH,
-                null,
-                "VoiceTimerMain"
-            )
-        }
-    }
-
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.TAIWAN
-            ttsReady = true
-        }
-    }
-
-    private fun checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
-        }
-    }
-
-    @Deprecated("Use Activity Result API when migrating")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001 && resultCode == RESULT_OK) {
-            val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: ""
-            handleSpokenTime(spoken)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        handler.post(updateRunnable)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacks(updateRunnable)
-    }
-
-    override fun onDestroy() {
-        tts?.stop()
-        tts?.shutdown()
-        super.onDestroy()
-    }
+    private fun send(action:String,seconds:Long?=null){val i=Intent(this,TimerService::class.java).apply{this.action=action;if(seconds!=null)putExtra(TimerService.EXTRA_SECONDS,seconds)};if(Build.VERSION.SDK_INT>=26)startForegroundService(i) else startService(i)}
+    private fun adjust(d:Long){val n=(prefs.getLong(CONFIGURED,300)+d).coerceIn(60,10800);prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply();speak("設定 "+(n/60)+" 分鐘");refresh()}
+    private fun speech(){try{startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);putExtra(RecognizerIntent.EXTRA_LANGUAGE,"zh-TW");putExtra(RecognizerIntent.EXTRA_PROMPT,"請說出時間，例如5分鐘")},1001)}catch(_:Exception){Toast.makeText(this,"裝置未支援語音識別服務",Toast.LENGTH_SHORT).show()}}
+    override fun onActivityResult(r:Int,c:Int,d:Intent?){super.onActivityResult(r,c,d);if(r==1001&&c==RESULT_OK){val s=d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:"";parse(s)}}
+    private fun parse(s:String){val x=s.replace(" ","").replace("個","");val h=Regex("(\\d+)小時").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0;val m=Regex("(\\d+)分").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0;val sec=Regex("(\\d+)秒").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0;var n=h*3600+m*60+sec;if(h==0L&&m==0L&&sec==0L)n=(Regex("^\\d+$").find(x)?.value?.toLongOrNull()?:0)*60;if(n<=0){Toast.makeText(this,"未能辨識時間："+s,Toast.LENGTH_SHORT).show();return};n=n.coerceIn(1,10800);prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply();speak("開始倒數 "+(n/60)+" 分鐘");send(TimerService.ACTION_START,n)}
+    private fun remain():Long{if(!prefs.getBoolean(RUNNING,false))return prefs.getLong(REMAINING,prefs.getLong(CONFIGURED,300)).coerceAtLeast(0);val e=prefs.getLong(END,0);return if(e>0)((e-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0) else prefs.getLong(REMAINING,0)}
+    private fun speakRemaining(){val n=remain();speak(if(n/60>0)"還剩 "+(n/60)+" 分鐘" else "還剩 "+n+" 秒")}
+    private fun speak(s:String){if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")}
+    private fun refresh(){val n=remain();display.text=String.format(Locale.TAIWAN,"%02d:%02d",n/60,n%60);val mode=prefs.getInt(INTERVAL,2);status.text=when{prefs.getBoolean(ALARMING,false)->"時間到了";prefs.getBoolean(PAUSED,false)->"已暫停";prefs.getBoolean(RUNNING,false)->"提醒："+when(mode){1->"每 3 分鐘";2->"每 5 分鐘";else->"關閉"};else->"準備開始"};val t=prefs.getLong(TOTAL,0);total.text="本次累計："+(t/3600)+" 小時 "+((t%3600)/60)+" 分鐘（共完成 "+prefs.getLong(COUNT,0)+" 次）";control.text=when{prefs.getBoolean(ALARMING,false)->"停止警報";prefs.getBoolean(PAUSED,false)->"繼續（長按重設）";prefs.getBoolean(RUNNING,false)->"暫停";else->"開始"}}
+    private fun requestNotification(){if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),101)}
+    override fun onInit(s:Int){if(s==TextToSpeech.SUCCESS){tts?.language=Locale.TAIWAN;ttsReady=true}}
+    override fun onResume(){super.onResume();handler.post(ticker)}
+    override fun onPause(){super.onPause();handler.removeCallbacks(ticker)}
+    override fun onDestroy(){tts?.stop();tts?.shutdown();super.onDestroy()}
 }
