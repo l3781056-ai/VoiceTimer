@@ -93,11 +93,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 if (e1 != null) {
                     val dy = e1.y - e2.y
                     if (abs(dy) > 60 && abs(velocityY) > 80) {
-                        if (dy > 0) {
-                            adjustTime(300L)
-                        } else {
-                            adjustTime(-300L)
-                        }
+                        val screenWidth = resources.displayMetrics.widthPixels.toFloat()
+                        val delta = if (e1.x < screenWidth * 2f / 3f) 300L else 60L
+                        adjustTime(if (dy > 0) delta else -delta)
                         return true
                     }
                 }
@@ -122,7 +120,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         val hintText = TextView(this).apply {
-            text = "【上滑+5分 / 下滑-5分 / 計時中點擊朗讀】"
+            text = "左2/3區：上滑+5分／下滑-5分　右1/3區：上滑+1分／下滑-1分"
             textSize = 14f
             setTextColor(Color.DKGRAY)
             gravity = Gravity.CENTER
@@ -400,7 +398,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             )
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(
                 RecognizerIntent.EXTRA_PROMPT,
                 "請說出時間，例如「5分鐘」或「3」"
