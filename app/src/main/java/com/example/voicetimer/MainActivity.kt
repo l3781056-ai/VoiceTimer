@@ -41,17 +41,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun build(){
         val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setBackgroundColor(Color.BLACK);setPadding(24,20,24,20)}
         val head=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val title=TextView(this).apply{text="浩川計時器";textSize=24f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);layoutParams=LinearLayout.LayoutParams(0,60,1f)}
+        val title=TextView(this).apply{text="浩川計時器";textSize=12f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);layoutParams=LinearLayout.LayoutParams(0,60,1f)}
         val set=Button(this).apply{text="⚙";textSize=22f;setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}}
         head.addView(title);head.addView(set)
-        val hint=TextView(this).apply{text="左2/3上滑+5分／下滑-5分　右1/3上滑+1分／下滑-1分";textSize=13f;setTextColor(Color.GRAY);gravity=Gravity.CENTER}
         display=TextView(this).apply{textSize=86f;setTextColor(Color.WHITE);setTypeface(null,Typeface.BOLD);gravity=Gravity.CENTER;layoutParams=LinearLayout.LayoutParams(-1,0,1f)}
-        status=TextView(this).apply{textSize=16f;setTextColor(Color.LTGRAY);gravity=Gravity.CENTER}
         total=TextView(this).apply{textSize=16f;setTextColor(Color.WHITE);gravity=Gravity.CENTER}
-        val reset=Button(this).apply{text="清除累計";setOnClickListener{AlertDialog.Builder(this@MainActivity).setTitle("清除累計").setMessage("確定將累計時間與完成次數歸零嗎？").setNegativeButton("取消",null).setPositiveButton("確定"){_,_->prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply();refresh()}.show()}}
+        val reset=Button(this).apply{text="清除";textSize=14f;minWidth=0;minimumWidth=0;minHeight=0;minimumHeight=0;setPadding(18,4,18,4);setOnClickListener{AlertDialog.Builder(this@MainActivity).setTitle("清除累計").setMessage("確定將累計時間與完成次數歸零嗎？").setNegativeButton("取消",null).setPositiveButton("確定"){_,_->prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply();refresh()}.show()}}
         val voice=Button(this).apply{text="🎤 語音輸入時間";textSize=19f;setOnClickListener{speech()}}
         control=Button(this).apply{text="開始";textSize=22f;setTypeface(null,Typeface.BOLD);setTextColor(Color.WHITE);setOnClickListener{controlClick()}}
-        root.addView(head);root.addView(hint);root.addView(display);root.addView(status);root.addView(total);root.addView(reset);root.addView(voice);root.addView(control);setContentView(root)
+        val totalRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;layoutParams=LinearLayout.LayoutParams(-1,WrapContent).apply{bottomMargin=12}}
+        total.layoutParams=LinearLayout.LayoutParams(0,WrapContent,1f).apply{leftMargin=8}
+        totalRow.addView(total)
+        totalRow.addView(reset)
+        root.addView(head);root.addView(display);root.addView(totalRow);root.addView(voice);root.addView(control);setContentView(root)
         display.setOnTouchListener(object:View.OnTouchListener{
             var sx=0f;var sy=0f
             override fun onTouch(v:View,e:MotionEvent):Boolean{when(e.action){MotionEvent.ACTION_DOWN->{sx=e.x;sy=e.y;return true};MotionEvent.ACTION_UP->{val dy=sy-e.y;val running=prefs.getBoolean(RUNNING,false);if(running&&!prefs.getBoolean(PAUSED,false)&&abs(dy)<60){speakRemaining()}else if(!running&&abs(dy)>60){val d=if(sx<display.width*2f/3f)300L else 60L;adjust(if(dy>0)d else -d)};return true}};return true}
@@ -75,7 +77,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private fun remain():Long{if(!prefs.getBoolean(RUNNING,false))return prefs.getLong(REMAINING,prefs.getLong(CONFIGURED,300)).coerceAtLeast(0);val e=prefs.getLong(END,0);return if(e>0)((e-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0) else prefs.getLong(REMAINING,0)}
     private fun speakRemaining(){val n=remain();speak(if(n/60>0)"還剩 "+(n/60)+" 分鐘" else "還剩 "+n+" 秒")}
     private fun speak(s:String){if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")}
-    private fun refresh(){val n=remain();display.text=String.format(Locale.TAIWAN,"%02d:%02d",n/60,n%60);val mode=prefs.getInt(INTERVAL,2);status.text=when{prefs.getBoolean(ALARMING,false)->"時間到了";prefs.getBoolean(PAUSED,false)->"已暫停";prefs.getBoolean(RUNNING,false)->"提醒："+when(mode){1->"每 3 分鐘";2->"每 5 分鐘";else->"關閉"};else->"準備開始"};val t=prefs.getLong(TOTAL,0);total.text="本次累計："+(t/3600)+" 小時 "+((t%3600)/60)+" 分鐘（共完成 "+prefs.getLong(COUNT,0)+" 次）";control.text=when{prefs.getBoolean(ALARMING,false)->"停止警報";prefs.getBoolean(PAUSED,false)->"繼續（長按重設）";prefs.getBoolean(RUNNING,false)->"暫停";else->"開始"}}
+    private fun refresh(){val n=remain();display.text=String.format(Locale.TAIWAN,"%02d:%02d",n/60,n%60);val t=prefs.getLong(TOTAL,0);total.text="累計 "+(t/60)+" 分 "+prefs.getLong(COUNT,0)+" 次";control.text=when{prefs.getBoolean(ALARMING,false)->"停止警報";prefs.getBoolean(PAUSED,false)->"繼續（長按重設）";prefs.getBoolean(RUNNING,false)->"暫停";else->"開始"}}
     private fun requestNotification(){if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),101)}
     override fun onInit(s:Int){if(s==TextToSpeech.SUCCESS){tts?.language=Locale.TAIWAN;ttsReady=true}}
     override fun onResume(){super.onResume();handler.post(ticker)}
