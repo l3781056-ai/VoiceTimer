@@ -253,7 +253,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             this.action=action
             if(seconds!=null)putExtra(TimerService.EXTRA_SECONDS,seconds)
         }
-        if(Build.VERSION.SDK_INT>=26)startForegroundService(i) else startService(i)
+        try{if(Build.VERSION.SDK_INT>=26)startForegroundService(i) else startService(i)}catch(_:Exception){try{startService(i)}catch(_:Exception){}}
     }
 
     private fun adjust(d:Long){
@@ -282,7 +282,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         super.onActivityResult(r,c,d)
         if(r==1001&&c==RESULT_OK){
             val s=d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:""
-            parse(s)
+            handler.post{try{handler.post{try{parse(s);refresh()}catch(_:Exception){Toast.makeText(this,"設定時間失敗",Toast.LENGTH_SHORT).show()}};refresh()}catch(_:Exception){Toast.makeText(this,"設定時間失敗",Toast.LENGTH_SHORT).show()}}
         }
     }
 
