@@ -243,7 +243,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             prefs.getBoolean(ALARMING,false)->send(TimerService.ACTION_ALARM_STOP)
             prefs.getBoolean(RUNNING,false)&&!prefs.getBoolean(PAUSED,false)->send(TimerService.ACTION_PAUSE)
             prefs.getBoolean(PAUSED,false)->send(TimerService.ACTION_RESUME)
-            else->{val n=prefs.getLong(CONFIGURED,300).coerceIn(1,10800);speak("開始計時 "+speechTime(n));send(TimerService.ACTION_START,n)}
+            else->{val n=prefs.getLong(CONFIGURED,300).coerceIn(1,10800);speak("開始計時 "+speechTime(n));try{send(TimerService.ACTION_START,n)}catch(_:Exception){}}
         }
         refresh()
     }
@@ -282,7 +282,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         super.onActivityResult(r,c,d)
         if(r==1001&&c==RESULT_OK){
             val s=d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:""
-            handler.post{try{handler.post{try{parse(s);refresh()}catch(_:Exception){Toast.makeText(this,"設定時間失敗",Toast.LENGTH_SHORT).show()}};refresh()}catch(_:Exception){Toast.makeText(this,"設定時間失敗",Toast.LENGTH_SHORT).show()}}
+            try{parse(s);refresh()}catch(_:Exception){}
         }
     }
 
@@ -300,7 +300,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         n=n.coerceIn(1,10800)
         prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply()
         speak("開始計時 "+speechTime(n))
-        send(TimerService.ACTION_START,n)
+        try{send(TimerService.ACTION_START,n)}catch(_:Exception){}
     }
 
     private fun remain():Long{
@@ -321,7 +321,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(s:String){
-        if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")
+        try{if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")}catch(_:Exception){}
     }
 
     private fun refresh(){
