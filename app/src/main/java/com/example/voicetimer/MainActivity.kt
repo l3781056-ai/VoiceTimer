@@ -58,7 +58,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
 
         if(Build.VERSION.SDK_INT>=30){
-            window.setDecorFitsSystemWindows(false)
+            window.setDecorFitsSystemWindows(false); window.navigationBarColor = Color.BLACK; if(Build.VERSION.SDK_INT >= 26){ window.decorView.systemUiVisibility = window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv() }
         }else{
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility=
@@ -88,7 +88,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text="⚙"
             textSize=22f
             setTextColor(Color.WHITE)
-            backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
+            
             setPadding(8,0,8,0)
             layoutParams=LinearLayout.LayoutParams((48*resources.displayMetrics.density).toInt(),-1)
             setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}
@@ -173,7 +173,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text="🎤 語音輸入時間"
             textSize=19f
             setTextColor(Color.WHITE)
-            backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
+            
             setPadding(12,4,12,4)
             layoutParams=LinearLayout.LayoutParams(-1,(48*resources.displayMetrics.density).toInt()).apply{topMargin=4}
             setOnClickListener{speech()}
@@ -184,7 +184,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             textSize=22f
             setTypeface(null,Typeface.BOLD)
             setTextColor(Color.WHITE)
-            backgroundTintList=ColorStateList.valueOf(Color.TRANSPARENT)
+            
             setPadding(12,4,12,4)
             layoutParams=LinearLayout.LayoutParams(-1,(50*resources.displayMetrics.density).toInt()).apply{topMargin=0;bottomMargin=4}
             setOnClickListener{controlClick()}
