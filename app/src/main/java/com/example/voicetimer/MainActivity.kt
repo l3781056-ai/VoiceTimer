@@ -67,7 +67,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         }
 
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root){v,insets-> val sb=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars()); val nb=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars()); v.setPadding(0,sb.top,0,nb.bottom); insets}
+        ViewCompatInsets.apply(root)
 
         val head=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
@@ -394,9 +394,9 @@ private object ViewCompatInsets {
             }
             v.setPadding(
                 12+bars.left,
-                bars.top,
+                bars.top + (8 * view.resources.displayMetrics.density).toInt(),
                 12+bars.right,
-                bars.bottom
+                bars.bottom + (8 * view.resources.displayMetrics.density).toInt()
             )
             insets
         }
