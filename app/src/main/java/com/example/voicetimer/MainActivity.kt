@@ -1,11 +1,7 @@
 package com.example.voicetimer
 
-import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.*
-import android.content.res.ColorStateList
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.*
@@ -30,168 +26,147 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private val handler = Handler(Looper.getMainLooper())
 
     companion object {
-        private const val PREFS="VoiceTimerPrefs"
-        private const val RUNNING="running"; private const val PAUSED="paused"
-        private const val REMAINING="remaining_seconds"; private const val CONFIGURED="configured_seconds"
-        private const val ALARMING="alarming"; private const val END="end_elapsed"
-        private const val TOTAL="total_work_seconds"; private const val COUNT="total_work_count"
-        private const val INTERVAL="setting_interval_remind_mode"
-        private const val REQ_RECORD_AUDIO=102
+        private const val PREFS = "VoiceTimerPrefs"
+        private const val RUNNING = "running"; private const val PAUSED = "paused"
+        private const val REMAINING = "remaining_seconds"; private const val CONFIGURED = "configured_seconds"
+        private const val ALARMING = "alarming"; private const val END = "end_elapsed"
+        private const val TOTAL = "total_work_seconds"; private const val COUNT = "total_work_count"
+        private const val INTERVAL = "setting_interval_remind_mode"
+        private const val REQ_RECORD_AUDIO = 102
     }
 
-    private val ticker=object:Runnable{override fun run(){refresh();handler.postDelayed(this,500)}}
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        tts = TextToSpeech(this, this)
 
-    override fun onCreate(b:Bundle?){
-        super.onCreate(b)
-        prefs=getSharedPreferences(PREFS,MODE_PRIVATE)
-        tts=TextToSpeech(this,this)
-        requestNotification()
-        build()
-    }
-
-    private fun build(){
-        val root=LinearLayout(this).apply{
-            orientation=LinearLayout.VERTICAL
-            gravity=Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.BLACK)
-            setPadding(12,0,12,0)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#121212"))
+            setPadding(16, 16, 16, 16)
+            layoutParams = ViewGroup.LayoutParams(-1, -1)
         }
 
-        if(Build.VERSION.SDK_INT>=30){
-            window.setDecorFitsSystemWindows(false); window.navigationBarColor = Color.BLACK; if(Build.VERSION.SDK_INT >= 26){ window.decorView.systemUiVisibility = window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv() }
-        }else{
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility=
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(-1, (48 * resources.displayMetrics.density).toInt())
         }
 
-        ViewCompatInsets.apply(root)
-
-        val head=LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL
-            gravity=Gravity.CENTER_VERTICAL
-            layoutParams=LinearLayout.LayoutParams(-1,(48*resources.displayMetrics.density).toInt())
-        }
-
-        val title=TextView(this).apply{
-            text="浩川計時器"
-            textSize=18f
+        val title = TextView(this).apply {
+            text = "浩川計時器"
+            textSize = 20f
             setTextColor(Color.WHITE)
-            setTypeface(null,Typeface.BOLD)
-            gravity=Gravity.CENTER_VERTICAL
-            layoutParams=LinearLayout.LayoutParams(0,-1,1f)
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
         }
 
-        val set=Button(this).apply{
-            text="⚙"
-            textSize=22f
+        val set = Button(this).apply {
+            text = "⚙"
+            textSize = 22f
             setTextColor(Color.WHITE)
-            
-            setPadding(8,0,8,0)
-            layoutParams=LinearLayout.LayoutParams((48*resources.displayMetrics.density).toInt(),-1)
-            setOnClickListener{startActivity(Intent(this@MainActivity,SettingsActivity::class.java))}
+            setPadding(8, 0, 8, 0)
+            layoutParams = LinearLayout.LayoutParams((48 * resources.displayMetrics.density).toInt(), -1)
+            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
         }
         head.addView(title)
         head.addView(set)
 
-        timerRow=LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL
-            gravity=Gravity.CENTER
-            layoutParams=LinearLayout.LayoutParams(-1,0,1f).apply{
-                topMargin=4
-                bottomMargin=4
+        timerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f).apply {
+                topMargin = 4
+                bottomMargin = 4
             }
         }
 
-        display=TextView(this).apply{
-            textSize=96f
+        // 分鐘：權重大，放大字體主視覺
+        display = TextView(this).apply {
+            textSize = 96f
             setTextColor(Color.WHITE)
-            setTypeface(null,Typeface.BOLD)
-            gravity=Gravity.CENTER
-            includeFontPadding=true
-            layoutParams=LinearLayout.LayoutParams(0,-1,3.5f)
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(0, -1, 3.8f)
         }
 
-        secondsDisplay=TextView(this).apply{
-            textSize=32f
-            setTextColor(Color.WHITE)
-            setTypeface(null,Typeface.BOLD)
-            gravity=Gravity.CENTER
-            includeFontPadding=true
-            layoutParams=LinearLayout.LayoutParams(0,-1,1.2f)
+        // 秒數：權重較小，字體適中附屬在右側
+        secondsDisplay = TextView(this).apply {
+            textSize = 42f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            includeFontPadding = false
+            setPadding(16, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, -1, 1.2f)
         }
 
         timerRow.addView(display)
         timerRow.addView(secondsDisplay)
 
-        val bottom=LinearLayout(this).apply{
-            orientation=LinearLayout.VERTICAL
-            gravity=Gravity.CENTER_HORIZONTAL
-            layoutParams=LinearLayout.LayoutParams(-1,ViewGroup.LayoutParams.WRAP_CONTENT)
+        val bottom = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        val totalRow=LinearLayout(this).apply{
-            orientation=LinearLayout.HORIZONTAL
-            gravity=Gravity.CENTER_VERTICAL
-            layoutParams=LinearLayout.LayoutParams(-1,(40*resources.displayMetrics.density).toInt())
+        val totalRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(-1, (40 * resources.displayMetrics.density).toInt())
         }
 
-        total=TextView(this).apply{
-            textSize=16f
+        total = TextView(this).apply {
+            textSize = 16f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        }
+
+        val reset = Button(this).apply {
+            text = "重置"
+            textSize = 16f
             setTextColor(Color.WHITE)
-            gravity=Gravity.CENTER
-            layoutParams=LinearLayout.LayoutParams(0,-1,1f).apply{leftMargin=8}
-        }
-
-        val reset=Button(this).apply{
-            text="清除"
-            textSize=14f
-            minWidth=0
-            minimumWidth=0
-            minHeight=0
-            minimumHeight=0
-            setPadding(18,4,18,4)
-            layoutParams=LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,(36*resources.displayMetrics.density).toInt())
-            setOnClickListener{
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("清除累計")
-                    .setMessage("確定將累計時間與完成次數歸零嗎？")
-                    .setNegativeButton("取消",null)
-                    .setPositiveButton("確定"){_,_->
-                        prefs.edit().putLong(TOTAL,0).putLong(COUNT,0).apply()
-                        refresh()
-                    }.show()
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, -1)
+            setOnClickListener {
+                prefs.edit().putLong(TOTAL, 0).putLong(COUNT, 0).apply()
+                updateUI()
             }
         }
-
         totalRow.addView(total)
         totalRow.addView(reset)
 
-        val voice=Button(this).apply{
-            text="🎤 語音輸入時間"
-            textSize=19f
+        val voice = Button(this).apply {
+            text = "語音設定時間"
+            textSize = 18f
             setTextColor(Color.WHITE)
-            
-            setPadding(12,4,12,4)
-            layoutParams=LinearLayout.LayoutParams(-1,(48*resources.displayMetrics.density).toInt()).apply{topMargin=4}
-            setOnClickListener{speech()}
+            setPadding(12, 4, 12, 4)
+            layoutParams = LinearLayout.LayoutParams(-1, (50 * resources.displayMetrics.density).toInt()).apply { bottomMargin = 4 }
+            setOnClickListener { startVoiceRecognition() }
         }
 
-        control=Button(this).apply{
-            text="開始"
-            textSize=22f
-            setTypeface(null,Typeface.BOLD)
+        status = TextView(this).apply {
+            text = "準備就緒"
+            textSize = 18f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 4 }
+        }
+
+        control = Button(this).apply {
+            text = "開始"
+            textSize = 22f
+            setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
-            
-            setPadding(12,4,12,4)
-            layoutParams=LinearLayout.LayoutParams(-1,(50*resources.displayMetrics.density).toInt()).apply{topMargin=0;bottomMargin=4}
-            setOnClickListener{controlClick()}
+            setPadding(12, 4, 12, 4)
+            layoutParams = LinearLayout.LayoutParams(-1, (50 * resources.displayMetrics.density).toInt()).apply { topMargin = 0; bottomMargin = 4 }
+            setOnClickListener { controlClick() }
         }
 
         bottom.addView(totalRow)
         bottom.addView(voice)
+        bottom.addView(status)
         bottom.addView(control)
 
         root.addView(head)
@@ -199,22 +174,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         root.addView(bottom)
         setContentView(root)
 
-        timerRow.addOnLayoutChangeListener{_,_,_,_,_,_,_,_,_->adjustTimerTextSize()}
+        timerRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> adjustTimerTextSize() }
 
-        timerRow.setOnTouchListener(object:View.OnTouchListener{
-            var sx=0f
-            var sy=0f
-            override fun onTouch(v:View,e:MotionEvent):Boolean{
-                when(e.action){
-                    MotionEvent.ACTION_DOWN->{sx=e.x;sy=e.y;return true}
-                    MotionEvent.ACTION_UP->{
-                        val dy=sy-e.y
-                        val running=prefs.getBoolean(RUNNING,false)
-                        if(running&&!prefs.getBoolean(PAUSED,false)&&abs(dy)<60){
+        // 滑動手勢掛在 timerRow：左側 70% 區域加減 5 分鐘，右側 30% 秒區加減 1 分鐘
+        timerRow.setOnTouchListener(object : View.OnTouchListener {
+            var sx = 0f
+            var sy = 0f
+            override fun onTouch(v: View, e: MotionEvent): Boolean {
+                when (e.action) {
+                    MotionEvent.ACTION_DOWN -> { sx = e.x; sy = e.y; return true }
+                    MotionEvent.ACTION_UP -> {
+                        val dy = sy - e.y
+                        val running = prefs.getBoolean(RUNNING, false)
+                        if (running && !prefs.getBoolean(PAUSED, false) && abs(dy) < 60) {
                             speakRemaining()
-                        }else if(!running&&abs(dy)>60){
-                            val d=if(sx<timerRow.width*0.7f)300L else 60L
-                            adjust(if(dy>0)d else -d)
+                        } else if (!running && abs(dy) > 60) {
+                            val d = if (sx < timerRow.width * 0.72f) 300L else 60L
+                            adjust(if (dy > 0) d else -d)
                         }
                         return true
                     }
@@ -224,182 +200,174 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         })
     }
 
-    private fun adjustTimerTextSize(){
-        if(!::timerRow.isInitialized || timerRow.width<=0 || timerRow.height<=0)return
+    private fun adjustTimerTextSize() {
+        if (!::timerRow.isInitialized || timerRow.width <= 0 || timerRow.height <= 0) return
+        val density = resources.displayMetrics.scaledDensity
+        val rowHeight = timerRow.height.toFloat()
+        val minuteWidth = timerRow.width * 0.75f
+        val maxByHeight = (rowHeight * 0.75f) / density
+        val maxByWidth = (minuteWidth * 0.75f) / density
+        val minuteSize = min(110f, min(maxByHeight, maxByWidth)).coerceAtLeast(36f)
 
-        val density=resources.displayMetrics.scaledDensity
-        val rowHeight=timerRow.height.toFloat()
-        val minuteWidth=timerRow.width*0.75f
-        val maxByHeight=(rowHeight*0.72f)/density
-        val maxByWidth=(minuteWidth*0.72f)/density
-        val minuteSize=min(96f,min(maxByHeight,maxByWidth)).coerceAtLeast(28f)
-
-        display.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize)
-        secondsDisplay.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize*0.45f)
+        display.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, minuteSize)
+        secondsDisplay.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, (minuteSize * 0.45f).coerceAtLeast(18f))
     }
 
-    private fun controlClick(){
-        when{
-            prefs.getBoolean(ALARMING,false)->send(TimerService.ACTION_ALARM_STOP)
-            prefs.getBoolean(RUNNING,false)&&!prefs.getBoolean(PAUSED,false)->send(TimerService.ACTION_PAUSE)
-            prefs.getBoolean(PAUSED,false)->send(TimerService.ACTION_RESUME)
-            else->{val n=prefs.getLong(CONFIGURED,300).coerceIn(1,10800);speak("開始計時 "+speechTime(n));try{send(TimerService.ACTION_START,n)}catch(_:Exception){}}
-        }
-        refresh()
-    }
-
-    private fun send(action:String,seconds:Long?=null){
-        val i=Intent(this,TimerService::class.java).apply{
-            this.action=action
-            if(seconds!=null)putExtra(TimerService.EXTRA_SECONDS,seconds)
-        }
-        try{if(Build.VERSION.SDK_INT>=26)startForegroundService(i) else startService(i)}catch(_:Exception){try{startService(i)}catch(_:Exception){}}
-    }
-
-    private fun adjust(d:Long){
-        val n=(prefs.getLong(CONFIGURED,300)+d).coerceIn(60,10800)
-        prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply()
-        speak("設定 "+(n/60)+" 分鐘")
-        refresh()
-    }
-
-    private fun speech(){
-        if(Build.VERSION.SDK_INT>=23&&checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),REQ_RECORD_AUDIO)
-            return
-        }
-        try{
-            startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply{
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE,"zh-TW")
-            },1001)
-        }catch(_:Exception){
-            Toast.makeText(this,"裝置未支援語音識別服務",Toast.LENGTH_SHORT).show()
+    private fun controlClick() {
+        when {
+            prefs.getBoolean(ALARMING, false) -> send(TimerService.ACTION_ALARM_STOP)
+            prefs.getBoolean(RUNNING, false) && !prefs.getBoolean(PAUSED, false) -> send(TimerService.ACTION_PAUSE)
+            prefs.getBoolean(PAUSED, false) -> send(TimerService.ACTION_RESUME)
+            else -> {
+                val n = prefs.getLong(CONFIGURED, 300).coerceIn(1, 10800)
+                speak("開始計時 " + speechTime(n))
+                try { send(TimerService.ACTION_START, n) } catch (_: Exception) {}
+            }
         }
     }
 
-    override fun onActivityResult(r:Int,c:Int,d:Intent?){
-        super.onActivityResult(r,c,d)
-        if(r==1001&&c==RESULT_OK){
-            val s=d?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?:""
-            try{parse(s);refresh()}catch(_:Exception){}
+    private fun adjust(delta: Long) {
+        val cur = prefs.getLong(CONFIGURED, 300)
+        val target = (cur + delta).coerceIn(60, 10800)
+        prefs.edit().putLong(CONFIGURED, target).putLong(REMAINING, target).apply()
+        updateUI()
+        speak(speechTime(target))
+    }
+
+    private fun speakRemaining() {
+        val n = remaining()
+        if (n > 0) speak("還剩 " + speechTime(n))
+    }
+
+    private fun updateUI() {
+        val running = prefs.getBoolean(RUNNING, false)
+        val paused = prefs.getBoolean(PAUSED, false)
+        val alarming = prefs.getBoolean(ALARMING, false)
+        val rem = remaining()
+
+        val m = rem / 60
+        val s = rem % 60
+        display.text = String.format(Locale.TAIWAN, "%02d:", m)
+        secondsDisplay.text = String.format(Locale.TAIWAN, "%02d", s)
+
+        val totalSec = prefs.getLong(TOTAL, 0)
+        val count = prefs.getLong(COUNT, 0)
+        total.text = "累計: ${totalSec / 60}分 (${count}次)"
+
+        when {
+            alarming -> {
+                status.text = "時間到了！"
+                control.text = "停止響鈴"
+            }
+            running && !paused -> {
+                status.text = "倒數中..."
+                control.text = "暫停"
+            }
+            paused -> {
+                status.text = "已暫停"
+                control.text = "繼續"
+            }
+            else -> {
+                status.text = "準備就緒"
+                control.text = "開始"
+            }
         }
     }
 
-    private fun parse(s:String){
-        val x=s.replace(" ","").replace("個","")
-        val h=Regex("(\\d+)小時").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0
-        val m=Regex("(\\d+)分").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0
-        val sec=Regex("(\\d+)秒").find(x)?.groupValues?.get(1)?.toLongOrNull()?:0
-        var n=h*3600+m*60+sec
-        if(h==0L&&m==0L&&sec==0L)n=(Regex("^\\d+$").find(x)?.value?.toLongOrNull()?:0)*60
-        if(n<=0){
-            Toast.makeText(this,"未能辨識時間："+s,Toast.LENGTH_SHORT).show()
-            return
+    private fun remaining(): Long {
+        if (!prefs.getBoolean(RUNNING, false)) return prefs.getLong(REMAINING, prefs.getLong(CONFIGURED, 300))
+        val e = prefs.getLong(END, 0)
+        return if (e > 0) ((e - SystemClock.elapsedRealtime()) / 1000).coerceAtLeast(0) else prefs.getLong(REMAINING, 0)
+    }
+
+    private fun send(action: String, seconds: Long = 0) {
+        val intent = Intent(this, TimerService::class.java).apply {
+            this.action = action
+            if (seconds > 0) putExtra(TimerService.EXTRA_SECONDS, seconds)
         }
-        n=n.coerceIn(1,10800)
-        prefs.edit().putLong(CONFIGURED,n).putLong(REMAINING,n).apply()
-        speak("開始計時 "+speechTime(n))
-        try{send(TimerService.ACTION_START,n)}catch(_:Exception){}
-    }
-
-    private fun remain():Long{
-        if(!prefs.getBoolean(RUNNING,false))return prefs.getLong(REMAINING,prefs.getLong(CONFIGURED,300)).coerceAtLeast(0)
-        val e=prefs.getLong(END,0)
-        return if(e>0)((e-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0) else prefs.getLong(REMAINING,0)
-    }
-
-    private fun speakRemaining(){
-        val n=remain()
-        speak(if(n/60>0)"還剩 "+(n/60)+" 分鐘" else "還剩 "+n+" 秒")
-    }
-
-    private fun speechTime(n:Long):String{
-        val m=n/60
-        val s=n%60
-        return if(m>0&&s>0)"$m 分 $s 秒" else if(m>0)"$m 分鐘" else "$s 秒"
-    }
-
-    private fun speak(s:String){
-        try{if(ttsReady)tts?.speak(s,TextToSpeech.QUEUE_FLUSH,null,"VoiceTimerMain")}catch(_:Exception){}
-    }
-
-    private fun refresh(){
-        val n=remain()
-        display.text=String.format(Locale.TAIWAN,"%02d",n/60)
-        secondsDisplay.text=String.format(Locale.TAIWAN,"%02d",n%60)
-        val t=prefs.getLong(TOTAL,0)
-        total.text="累計 "+(t/60)+" 分 "+prefs.getLong(COUNT,0)+" 次"
-        control.text=when{
-            prefs.getBoolean(ALARMING,false)->"停止警報"
-            prefs.getBoolean(PAUSED,false)->"繼續（長按重設）"
-            prefs.getBoolean(RUNNING,false)->"暫停"
-            else->"開始"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){
-        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
-        if(requestCode==REQ_RECORD_AUDIO&&grantResults.firstOrNull()==PackageManager.PERMISSION_GRANTED)speech()
-    }
-
-    private fun requestNotification(){
-        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),101)
-    }
-
-    override fun onInit(s:Int){
-        if(s==TextToSpeech.SUCCESS){
-            tts?.language=Locale.TAIWAN
-            ttsReady=true
+    private fun startVoiceRecognition() {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出倒數時間（例如：5分鐘、10分半）")
+            }
+            startActivityForResult(intent, REQ_RECORD_AUDIO)
+        } catch (_: Exception) {
+            Toast.makeText(this, "語音辨識不可用", Toast.LENGTH_SHORT).show()
         }
     }
 
-    override fun onResume(){
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_RECORD_AUDIO && resultCode == RESULT_OK) {
+            val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val text = matches?.firstOrNull() ?: return
+            val sec = parseVoiceText(text)
+            if (sec > 0) {
+                prefs.edit().putLong(CONFIGURED, sec).putLong(REMAINING, sec).apply()
+                updateUI()
+                speak("已設定為 " + speechTime(sec))
+            } else {
+                speak("聽不清楚，請再試一次")
+            }
+        }
+    }
+
+    private fun parseVoiceText(text: String): Long {
+        val regex = Regex("(\\d+)\\s*(分|分鐘)")
+        val match = regex.find(text)
+        if (match != null) {
+            val min = match.groupValues[1].toLongOrNull() ?: 0L
+            return (min * 60).coerceIn(60, 10800)
+        }
+        return 0L
+    }
+
+    private fun speechTime(n: Long): String {
+        val m = n / 60
+        val s = n % 60
+        return if (m > 0 && s > 0) "$m 分 $s 秒" else if (m > 0) "$m 分鐘" else "$s 秒"
+    }
+
+    private fun speak(text: String) {
+        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "VoiceTimerSpeech")
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(Locale.TAIWAN)
+            ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+        }
+    }
+
+    private val ticker = object : Runnable {
+        override fun run() {
+            updateUI()
+            handler.postDelayed(this, 500)
+        }
+    }
+
+    override fun onResume() {
         super.onResume()
         handler.post(ticker)
     }
 
-    override fun onPause(){
+    override fun onPause() {
         super.onPause()
         handler.removeCallbacks(ticker)
     }
 
-    override fun onDestroy(){
+    override fun onDestroy() {
         tts?.stop()
         tts?.shutdown()
         super.onDestroy()
-    }
-}
-
-/**
- * Applies Android status/navigation bar insets without requiring AndroidX.
- * The activity lays out edge-to-edge, then the root receives safe padding.
- */
-private object ViewCompatInsets {
-    fun apply(view: View){
-        view.setOnApplyWindowInsetsListener{v,insets->
-            val bars=if(Build.VERSION.SDK_INT>=30){
-                insets.getInsets(WindowInsets.Type.systemBars())
-            }else{
-                @Suppress("DEPRECATION")
-                insets.systemWindowInsetLeft.let{
-                    android.graphics.Insets.of(
-                        insets.systemWindowInsetLeft,
-                        insets.systemWindowInsetTop,
-                        insets.systemWindowInsetRight,
-                        insets.systemWindowInsetBottom
-                    )
-                }
-            }
-            v.setPadding(
-                12+bars.left,
-                bars.top + (8 * view.resources.displayMetrics.density).toInt(),
-                12+bars.right,
-                bars.bottom + (8 * view.resources.displayMetrics.density).toInt()
-            )
-            insets
-        }
-        view.requestApplyInsets()
     }
 }
