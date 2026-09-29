@@ -111,7 +111,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTypeface(null,Typeface.BOLD)
             gravity=Gravity.CENTER
             includeFontPadding=true
-            layoutParams=LinearLayout.LayoutParams(0,-1,2f)
+            layoutParams=LinearLayout.LayoutParams(0,-1,3.5f)
         }
 
         secondsDisplay=TextView(this).apply{
@@ -120,7 +120,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTypeface(null,Typeface.BOLD)
             gravity=Gravity.CENTER
             includeFontPadding=true
-            layoutParams=LinearLayout.LayoutParams(0,-1,1f)
+            layoutParams=LinearLayout.LayoutParams(0,-1,1.2f)
         }
 
         timerRow.addView(display)
@@ -201,7 +201,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         timerRow.addOnLayoutChangeListener{_,_,_,_,_,_,_,_,_->adjustTimerTextSize()}
 
-        display.setOnTouchListener(object:View.OnTouchListener{
+        timerRow.setOnTouchListener(object:View.OnTouchListener{
             var sx=0f
             var sy=0f
             override fun onTouch(v:View,e:MotionEvent):Boolean{
@@ -213,7 +213,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         if(running&&!prefs.getBoolean(PAUSED,false)&&abs(dy)<60){
                             speakRemaining()
                         }else if(!running&&abs(dy)>60){
-                            val d=if(sx<display.width)300L else 60L
+                            val d=if(sx<timerRow.width*0.7f)300L else 60L
                             adjust(if(dy>0)d else -d)
                         }
                         return true
@@ -229,13 +229,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val density=resources.displayMetrics.scaledDensity
         val rowHeight=timerRow.height.toFloat()
-        val minuteWidth=timerRow.width*2f/3f
+        val minuteWidth=timerRow.width*0.75f
         val maxByHeight=(rowHeight*0.72f)/density
         val maxByWidth=(minuteWidth*0.72f)/density
         val minuteSize=min(96f,min(maxByHeight,maxByWidth)).coerceAtLeast(28f)
 
         display.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize)
-        secondsDisplay.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize/3f)
+        secondsDisplay.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,minuteSize*0.45f)
     }
 
     private fun controlClick(){
