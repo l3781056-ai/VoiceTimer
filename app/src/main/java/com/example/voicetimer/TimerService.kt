@@ -17,6 +17,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     private var ring: Ringtone? = null
     private val tickerHandler = Handler(Looper.getMainLooper())
     private var tickerRunnable: Runnable? = null
+    private val alarmTimeoutRunnable = Runnable { stopAlarm() }
 
     companion object {
         const val ACTION_START = "com.example.voicetimer.START"
@@ -169,7 +170,9 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
         safeStartForeground(note("浩川計時器", "時間到了！", false))
         say("時間到了！")
         alarmSound()
-        // 響鈴最長 1 分鐘（60秒）自動停止並重置為開始狀態
+        // 響鈴最長 1 分鐘（60秒）自動停止並重置為開始狀態（Handler 直接執行 + AlarmManager 雙保險）
+        tickerHandler.removeCallbacks(alarmTimeoutRunnable)
+        tickerHandler.postDelayed(alarmTimeoutRunnable, 60_000L)
         val am = getSystemService(ALARM_SERVICE) as AlarmManager
         setExact(am, SystemClock.elapsedRealtime() + 60 * 1000, pending(ACTION_ALARM_STOP, AR))
     }
@@ -305,6 +308,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun cancelAll() {
+        tickerHandler.removeCallbacks(alarmTimeoutRunnable)
         stopTicker()
         cancelReminder()
         cancelClock()
