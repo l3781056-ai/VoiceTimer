@@ -209,8 +209,8 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun schedule(n: Long) {
-        startTicker()
         cancelAll()
+        startTicker()
         val am = getSystemService(ALARM_SERVICE) as AlarmManager
         setExact(am, SystemClock.elapsedRealtime() + n * 1000, pending(ACTION_FINISH, FR))
         nextReminder(n)
