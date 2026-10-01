@@ -19,6 +19,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var status: TextView
     private lateinit var total: TextView
     private lateinit var control: Button
+    private lateinit var voiceButton: Button
     private lateinit var timerRow: LinearLayout
     private lateinit var prefs: SharedPreferences
     private var tts: TextToSpeech? = null
@@ -137,7 +138,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         totalRow.addView(total)
         totalRow.addView(reset)
 
-        val voice = Button(this).apply {
+        voiceButton = Button(this).apply {
             text = "語音設定時間"
             textSize = 18f
             setTextColor(Color.WHITE)
@@ -145,6 +146,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             layoutParams = LinearLayout.LayoutParams(-1, (50 * resources.displayMetrics.density).toInt()).apply { bottomMargin = 4 }
             setOnClickListener { startVoiceRecognition() }
         }
+        val voice = voiceButton
 
         status = TextView(this).apply {
             text = "準備就緒"
@@ -262,6 +264,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val count = prefs.getLong(COUNT, 0)
         total.text = "累計: ${totalSec / 60}分 (${count}次)"
 
+        val isIdle = !running && !paused && !alarming
+        voiceButton.isEnabled = isIdle
+        voiceButton.alpha = if (isIdle) 1.0f else 0.4f
+
         when {
             alarming -> {
                 status.text = "時間到了！"
@@ -301,6 +307,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun startVoiceRecognition() {
+        val running = prefs.getBoolean(RUNNING, false)
+        val paused = prefs.getBoolean(PAUSED, false)
+        val alarming = prefs.getBoolean(ALARMING, false)
+        if (running || paused || alarming) return
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -321,8 +331,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             val sec = parseVoiceText(text)
             if (sec > 0) {
                 prefs.edit().putLong(CONFIGURED, sec).putLong(REMAINING, sec).apply()
+                send(TimerService.ACTION_START, sec)
                 updateUI()
-                speak("已設定為 " + speechTime(sec))
+                speak("已設定為 " + speechTime(sec) + "，開始計時")
             } else {
                 speak("聽不清楚，請再試一次")
             }
