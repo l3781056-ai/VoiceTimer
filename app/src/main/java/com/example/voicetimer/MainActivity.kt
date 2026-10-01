@@ -82,25 +82,25 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // 分鐘：權重大，放大字體主視覺
+        // 分鐘：主視覺，自然寬度居中
         display = TextView(this).apply {
-            textSize = 96f
+            textSize = 88f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            gravity = Gravity.CENTER
             includeFontPadding = false
-            layoutParams = LinearLayout.LayoutParams(0, -1, 3.8f)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        // 秒數：權重較小，字體適中附屬在右側
+        // 秒數：適中字體緊鄰右側，自然居中
         secondsDisplay = TextView(this).apply {
-            textSize = 42f
+            textSize = 40f
             setTextColor(Color.parseColor("#CCCCCC"))
             setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            gravity = Gravity.CENTER
             includeFontPadding = false
-            setPadding(16, 0, 0, 0)
-            layoutParams = LinearLayout.LayoutParams(0, -1, 1.2f)
+            setPadding(8, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
         timerRow.addView(display)
@@ -173,10 +173,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         root.addView(timerRow)
         root.addView(bottom)
         setContentView(root)
-        // 避免被底部系統導覽列（白色橫條）遮擋按鈕
+        // 同時避開頂部狀態列與底部系統導覽列（白色橫條）
         root.setOnApplyWindowInsetsListener { v, insets ->
-            val navBottom = insets.systemWindowInsetBottom
-            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, navBottom)
+            val topInset = insets.systemWindowInsetTop
+            val bottomInset = insets.systemWindowInsetBottom
+            v.setPadding(v.paddingLeft, topInset, v.paddingRight, bottomInset)
             insets
         }
         root.fitsSystemWindows = true
