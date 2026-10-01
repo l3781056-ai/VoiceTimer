@@ -173,6 +173,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         root.addView(timerRow)
         root.addView(bottom)
         setContentView(root)
+        // 避免被底部系統導覽列（白色橫條）遮擋按鈕
+        root.setOnApplyWindowInsetsListener { v, insets ->
+            val navBottom = insets.systemWindowInsetBottom
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, navBottom)
+            insets
+        }
+        root.fitsSystemWindows = true
 
         timerRow.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> adjustTimerTextSize() }
 
