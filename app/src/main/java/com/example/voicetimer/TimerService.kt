@@ -47,6 +47,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
         const val RR = 2001
         const val FR = 2002
         const val CR = 2003
+        const val AR = 2004
     }
 
     override fun onCreate() {
@@ -168,6 +169,9 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
         safeStartForeground(note("浩川計時器", "時間到了！", false))
         say("時間到了！")
         alarmSound()
+        // 響鈴最長 1 分鐘（60秒）自動停止並重置為開始狀態
+        val am = getSystemService(ALARM_SERVICE) as AlarmManager
+        setExact(am, SystemClock.elapsedRealtime() + 60 * 1000, pending(ACTION_ALARM_STOP, AR))
     }
 
     private fun stopAlarm() {
@@ -306,6 +310,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
         cancelClock()
         val am = getSystemService(ALARM_SERVICE) as AlarmManager
         am.cancel(noCreate(ACTION_FINISH, FR))
+        am.cancel(noCreate(ACTION_ALARM_STOP, AR))
     }
 
     private fun cancelReminder() {
