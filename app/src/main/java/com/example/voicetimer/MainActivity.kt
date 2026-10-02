@@ -24,6 +24,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var prefs: SharedPreferences
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var lastAnnouncedStatus = ""
     private val handler = Handler(Looper.getMainLooper())
 
     companion object {
@@ -268,23 +269,34 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         voiceButton.isEnabled = isIdle
         voiceButton.alpha = if (isIdle) 1.0f else 0.4f
 
-        when {
+        val currentStatus = when {
             alarming -> {
-                status.text = "時間到了！"
                 control.text = "停止響鈴"
+                "時間到了！"
             }
             running && !paused -> {
-                status.text = "倒數中..."
                 control.text = "暫停"
+                "倒數中"
             }
             paused -> {
-                status.text = "已暫停"
                 control.text = "繼續"
+                "已暫停"
             }
             else -> {
-                status.text = "準備就緒"
                 control.text = "開始"
+                "準備就緒"
             }
+        }
+        status.text = currentStatus
+        if (currentStatus != lastAnnouncedStatus) {
+            // 首次啟動剛載入時若為準備就緒，避免一開 App 就發聲
+            if (lastAnnouncedStatus.isNotEmpty()) {
+                // alarming 時 Service 端通常已有語音，避免重疊；其他狀態自動朗讀
+                if (!alarming) {
+                    speak(currentStatus)
+                }
+            }
+            lastAnnouncedStatus = currentStatus
         }
     }
 
