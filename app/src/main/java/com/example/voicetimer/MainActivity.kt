@@ -228,7 +228,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         when {
             prefs.getBoolean(ALARMING, false) -> send(TimerService.ACTION_ALARM_STOP)
             prefs.getBoolean(RUNNING, false) && !prefs.getBoolean(PAUSED, false) -> send(TimerService.ACTION_PAUSE)
-            prefs.getBoolean(PAUSED, false) -> send(TimerService.ACTION_RESUME)
+            prefs.getBoolean(PAUSED, false) -> {
+                speak("繼續")
+                send(TimerService.ACTION_RESUME)
+            }
             else -> {
                 val n = prefs.getLong(CONFIGURED, 300).coerceIn(1, 10800)
                 speak("開始計時 " + speechTime(n))
