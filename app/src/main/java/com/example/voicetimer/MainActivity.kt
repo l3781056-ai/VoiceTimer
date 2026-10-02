@@ -310,7 +310,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val running = prefs.getBoolean(RUNNING, false)
         val paused = prefs.getBoolean(PAUSED, false)
         val alarming = prefs.getBoolean(ALARMING, false)
-        if (running || paused || alarming) return
+        if (running || paused) return
+        if (alarming) {
+            send(TimerService.ACTION_ALARM_STOP)
+        }
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
