@@ -264,7 +264,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val count = prefs.getLong(COUNT, 0)
         total.text = "累計: ${totalSec / 60}分 (${count}次)"
 
-        val isIdle = !running && !paused && !alarming
+        val isIdle = !running && !paused
         voiceButton.isEnabled = isIdle
         voiceButton.alpha = if (isIdle) 1.0f else 0.4f
 
