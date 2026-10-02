@@ -292,7 +292,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             // 首次啟動剛載入時若為準備就緒，避免一開 App 就發聲
             if (lastAnnouncedStatus.isNotEmpty()) {
                 // alarming 時 Service 端通常已有語音，避免重疊；其他狀態自動朗讀
-                if (!alarming) {
+                if (!alarming && currentStatus != "倒數中") {
                     speak(currentStatus)
                 }
             }
