@@ -92,7 +92,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/voiceBtn"
             android:layout_width="match_parent"
             android:layout_height="58dp"
@@ -103,7 +103,7 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/startBtn"
             android:layout_width="match_parent"
             android:layout_height="58dp"
