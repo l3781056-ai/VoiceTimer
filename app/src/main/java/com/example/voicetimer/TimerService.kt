@@ -3,6 +3,7 @@ package com.example.voicetimer
 import android.app.*
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ServiceInfo
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.*
@@ -376,8 +377,8 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
 
     private fun safeStartForeground(n: Notification) {
         try {
-            if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(NID, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
                 startForeground(NID, n)
             }
