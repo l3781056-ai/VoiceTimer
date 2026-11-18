@@ -17,6 +17,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     private var ring: Ringtone? = null
     private val tickerHandler = Handler(Looper.getMainLooper())
     private var tickerRunnable: Runnable? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     companion object {
         const val ACTION_START = "com.example.voicetimer.START"
@@ -71,6 +72,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
 
     override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
         safeStartForeground(note("浩川計時器", "服務運作中", true))
+        acquireWakeLock()
         when (i?.action) {
             ACTION_START -> startNew(i.getLongExtra(EXTRA_SECONDS, 300))
             ACTION_RESUME -> resume()
@@ -85,6 +87,28 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun prefs(): SharedPreferences = getSharedPreferences(P, MODE_PRIVATE)
+
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoiceTimer::TimerWakeLock")
+        }
+        wakeLock?.let {
+            if (!it.isHeld) {
+                it.acquire(10805 * 1000L)
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+        } catch (_: Exception) {}
+    }
 
     private fun startNew(s: Long) {
         val n = s.coerceIn(1, 10800)
@@ -102,7 +126,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun resume() {
-        val n = prefs().getLong(REM, 0).coerceIn(1, 10800)
+        val n = remaining().coerceIn(1, 10800)
         if (n <= 0) return
         val e = SystemClock.elapsedRealtime() + n * 1000
         prefs().edit()
@@ -123,6 +147,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
             .putLong(REM, n)
             .remove(END)
             .apply()
+        releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -134,12 +159,14 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
             .putBoolean(PAUSE, false)
             .remove(END)
             .apply()
+        releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun reminder() {
         if (!prefs().getBoolean(RUN, false)) {
+            releaseWakeLock()
             stopSelf()
             return
         }
@@ -184,6 +211,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
             .putLong(REM, cfg)
             .remove(END)
             .apply()
+        releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -193,8 +221,8 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
         tickerRunnable = object : Runnable {
             override fun run() {
                 if (!prefs().getBoolean(RUN, false)) return
-                val e = prefs().getLong(END, 0)
-                if (e > 0 && SystemClock.elapsedRealtime() >= e) {
+                val n = remaining()
+                if (n <= 0) {
                     finishTimer()
                 } else {
                     tickerHandler.postDelayed(this, 1000)
@@ -267,6 +295,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
 
     private fun chime() {
         if (!prefs().getBoolean(RUN, false)) {
+            releaseWakeLock()
             stopSelf()
             return
         }
@@ -418,6 +447,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
         tts?.shutdown()
         ring = null
         tts = null
+        releaseWakeLock()
         super.onDestroy()
     }
 }
