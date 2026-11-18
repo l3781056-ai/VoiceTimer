@@ -16,7 +16,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="浩川計時器"
-            android:textColor="#FFFFFF"
+            android:textColor="#4ADE80"
             android:textSize="22sp"
             android:textStyle="bold"
             android:layout_alignParentStart="true"
@@ -30,7 +30,7 @@
             android:layout_centerVertical="true"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_manage"
-            android:tint="#CCCCCC"
+            android:tint="#4ADE80"
             android:contentDescription="設定" />
     </RelativeLayout>
 
@@ -40,7 +40,7 @@
         android:layout_marginTop="8dp"
         android:gravity="center"
         android:text="左2/3區：上滑+5分／下滑-5分   右1/3區：上滑+1分／下滑-1分"
-        android:textColor="#888888"
+        android:textColor="#4ADE80"
         android:textSize="14sp" />
 
     <FrameLayout
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:text="05:00"
-            android:textColor="#FFFFFF"
+            android:textColor="#4ADE80"
             android:textSize="84sp"
             android:textStyle="bold" />
     </FrameLayout>
@@ -71,7 +71,7 @@
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true"
             android:text="累計: 00:00 (0次)"
-            android:textColor="#AAAAAA"
+            android:textColor="#4ADE80"
             android:textSize="16sp" />
 
         <Button
@@ -80,9 +80,9 @@
             android:layout_height="36dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:background="#333333"
+            android:backgroundTint="#333333"
             android:text="重置"
-            android:textColor="#FFFFFF"
+            android:textColor="#4ADE80"
             android:textSize="14sp" />
     </RelativeLayout>
 
@@ -97,9 +97,9 @@
             android:layout_width="match_parent"
             android:layout_height="58dp"
             android:layout_marginBottom="12dp"
-            android:background="@drawable/btn_voice_bg"
-            android:text="🎤  語音輸入時間"
-            android:textColor="#DDDDDD"
+            android:backgroundTint="#333333"
+            android:text="🎤  語音設定時間"
+            android:textColor="#4ADE80"
             android:textSize="18sp"
             android:textStyle="bold" />
 
@@ -107,9 +107,9 @@
             android:id="@+id/startBtn"
             android:layout_width="match_parent"
             android:layout_height="58dp"
-            android:background="@drawable/btn_action_bg"
+            android:backgroundTint="#333333"
             android:text="開始"
-            android:textColor="#FFFFFF"
+            android:textColor="#4ADE80"
             android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
