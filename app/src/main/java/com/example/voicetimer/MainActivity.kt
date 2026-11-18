@@ -1,11 +1,15 @@
 package com.example.voicetimer
 
+import android.Manifest
 import android.app.Activity
 import android.content.*
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.*
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.*
 import android.widget.*
@@ -26,6 +30,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var ttsReady = false
     private var lastAnnouncedStatus = ""
     private val handler = Handler(Looper.getMainLooper())
+    private var speechRecognizer: SpeechRecognizer? = null
 
     companion object {
         private const val PREFS = "VoiceTimerPrefs"
@@ -34,13 +39,21 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         private const val ALARMING = "alarming"; private const val END = "end_elapsed"
         private const val TOTAL = "total_work_seconds"; private const val COUNT = "total_work_count"
         private const val INTERVAL = "setting_interval_remind_mode"
-        private const val REQ_RECORD_AUDIO = 102
+        private const val REQ_POST_NOTIFICATIONS = 101
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         tts = TextToSpeech(this, this)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+            }
+        }
+
+        initSpeechRecognizer()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -211,6 +224,48 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         })
     }
 
+    private fun initSpeechRecognizer() {
+        try {
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
+
+        if (SpeechRecognizer.isRecognitionAvailable(this)) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onError(error: Int) {
+                        if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                            try {
+                                speechRecognizer?.destroy()
+                            } catch (_: Exception) {}
+                            speechRecognizer = null
+                            initSpeechRecognizer()
+                        }
+                    }
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val text = matches?.firstOrNull() ?: return
+                        val sec = parseVoiceText(text)
+                        if (sec > 0) {
+                            prefs.edit().putLong(CONFIGURED, sec).putLong(REMAINING, sec).apply()
+                            send(TimerService.ACTION_START, sec)
+                            updateUI()
+                            speak("已設定為 " + speechTime(sec) + "，開始計時")
+                        } else {
+                            speak("聽不清楚，請再試一次")
+                        }
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+            }
+        }
+    }
+
     private fun adjustTimerTextSize() {
         if (!::timerRow.isInitialized || timerRow.width <= 0 || timerRow.height <= 0) return
         val density = resources.displayMetrics.scaledDensity
@@ -330,31 +385,17 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             send(TimerService.ACTION_ALARM_STOP)
         }
         try {
+            if (speechRecognizer == null) {
+                initSpeechRecognizer()
+            }
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
                 putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出倒數時間（例如：5分鐘、10分半）")
             }
-            startActivityForResult(intent, REQ_RECORD_AUDIO)
+            speechRecognizer?.startListening(intent)
         } catch (_: Exception) {
             Toast.makeText(this, "語音辨識不可用", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_RECORD_AUDIO && resultCode == RESULT_OK) {
-            val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            val text = matches?.firstOrNull() ?: return
-            val sec = parseVoiceText(text)
-            if (sec > 0) {
-                prefs.edit().putLong(CONFIGURED, sec).putLong(REMAINING, sec).apply()
-                send(TimerService.ACTION_START, sec)
-                updateUI()
-                speak("已設定為 " + speechTime(sec) + "，開始計時")
-            } else {
-                speak("聽不清楚，請再試一次")
-            }
         }
     }
 
@@ -403,6 +444,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        try {
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
+        speechRecognizer = null
         tts?.stop()
         tts?.shutdown()
         super.onDestroy()
