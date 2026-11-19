@@ -29,7 +29,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var lastAnnouncedStatus = ""
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLocate() ?: Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
 
     companion object {
@@ -40,6 +40,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         private const val TOTAL = "total_work_seconds"; private const val COUNT = "total_work_count"
         private const val INTERVAL = "setting_interval_remind_mode"
         private const val REQ_POST_NOTIFICATIONS = 101
+        private const val REQ_RECORD_AUDIO = 102
+        private const val REQ_CODE_SPEECH = 1001
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -238,6 +240,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {}
                     override fun onError(error: Int) {
+                        Toast.makeText(this@MainActivity, "語音辨識錯誤或權限不足，請重試", Toast.LENGTH_SHORT).show()
                         if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                             try {
                                 speechRecognizer?.destroy()
@@ -377,6 +380,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun startVoiceRecognition() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_RECORD_AUDIO)
+            return
+        }
+
         val running = prefs.getBoolean(RUNNING, false)
         val paused = prefs.getBoolean(PAUSED, false)
         val alarming = prefs.getBoolean(ALARMING, false)
@@ -388,14 +396,62 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (speechRecognizer == null) {
                 initSpeechRecognizer()
             }
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出倒數時間（例如：5分鐘、10分半）")
+            if (speechRecognizer != null) {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出倒數時間（例如：5分鐘、10分半）")
+                }
+                speechRecognizer?.startListening(intent)
+            } else {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出倒數時間（例如：5分鐘、10分半）")
+                }
+                startActivityForResult(intent, REQ_CODE_SPEECH)
             }
-            speechRecognizer?.startListening(intent)
         } catch (_: Exception) {
-            Toast.makeText(this, "語音辨識不可用", Toast.LENGTH_SHORT).show()
+            try {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "請說出倒數時間（例如：5分鐘、10分半）")
+                }
+                startActivityForResult(intent, REQ_CODE_SPEECH)
+            } catch (e: Exception) {
+                Toast.makeText(this, "語音辨識不可用", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_RECORD_AUDIO) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startVoiceRecognition()
+            } else {
+                Toast.makeText(this, "未取得麥克風權限", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_CODE_SPEECH) {
+            if (resultCode == RESULT_OK && data != null) {
+                val matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                val text = matches?.firstOrNull() ?: return
+                val sec = parseVoiceText(text)
+                if (sec > 0) {
+                    prefs.edit().putLong(CONFIGURED, sec).putLong(REMAINING, sec).apply()
+                    send(TimerService.ACTION_START, sec)
+                    updateUI()
+                    speak("已設定為 " + speechTime(sec) + "，開始計時")
+                } else {
+                    speak("聽不清楚，請再試一次")
+                }
+            }
         }
     }
 
