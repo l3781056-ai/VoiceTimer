@@ -6,6 +6,7 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.*
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -29,7 +30,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var lastAnnouncedStatus = ""
-    private val handler = Handler(Looper.getMainLocate() ?: Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLooper() ?: Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
 
     companion object {
@@ -42,6 +43,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         private const val REQ_POST_NOTIFICATIONS = 101
         private const val REQ_RECORD_AUDIO = 102
         private const val REQ_CODE_SPEECH = 1001
+    }
+
+    private fun createMintButtonDrawable(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = (8 * resources.displayMetrics.density)
+            setColor(Color.parseColor("#161B22"))
+            setStroke((1.5 * resources.displayMetrics.density).toInt(), Color.parseColor("#6EE7B7"))
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +69,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#121212"))
+            setBackgroundColor(Color.parseColor("#0D1117"))
             setPadding(16, 16, 16, 16)
             layoutParams = ViewGroup.LayoutParams(-1, -1)
         }
@@ -73,7 +83,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val title = TextView(this).apply {
             text = "浩川計時器"
             textSize = 20f
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#6EE7B7"))
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
@@ -82,7 +92,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val set = Button(this).apply {
             text = "⚙"
             textSize = 22f
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#6EE7B7"))
+            background = createMintButtonDrawable()
             setPadding(8, 0, 8, 0)
             layoutParams = LinearLayout.LayoutParams((48 * resources.displayMetrics.density).toInt(), -1)
             setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
@@ -102,7 +113,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         // 分鐘：主視覺，自然寬度居中
         display = TextView(this).apply {
             textSize = 88f
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#6EE7B7"))
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             includeFontPadding = false
@@ -112,7 +123,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         // 秒數：適中字體緊鄰右側，自然居中
         secondsDisplay = TextView(this).apply {
             textSize = 40f
-            setTextColor(Color.parseColor("#CCCCCC"))
+            setTextColor(Color.parseColor("#94A3B8"))
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             includeFontPadding = false
@@ -137,14 +148,15 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         total = TextView(this).apply {
             textSize = 16f
-            setTextColor(Color.parseColor("#AAAAAA"))
+            setTextColor(Color.parseColor("#94A3B8"))
             layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         }
 
         val reset = Button(this).apply {
             text = "重置"
             textSize = 16f
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#6EE7B7"))
+            background = createMintButtonDrawable()
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, -1)
             setOnClickListener {
                 prefs.edit().putLong(TOTAL, 0).putLong(COUNT, 0).apply()
@@ -157,7 +169,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         voiceButton = Button(this).apply {
             text = "語音設定時間"
             textSize = 18f
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#6EE7B7"))
+            background = createMintButtonDrawable()
             setPadding(12, 4, 12, 4)
             layoutParams = LinearLayout.LayoutParams(-1, (50 * resources.displayMetrics.density).toInt()).apply { bottomMargin = 4 }
             setOnClickListener { startVoiceRecognition() }
@@ -167,7 +180,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         status = TextView(this).apply {
             text = "準備就緒"
             textSize = 18f
-            setTextColor(Color.parseColor("#AAAAAA"))
+            setTextColor(Color.parseColor("#94A3B8"))
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 4 }
         }
@@ -176,7 +189,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = "開始"
             textSize = 22f
             setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#6EE7B7"))
+            background = createMintButtonDrawable()
             setPadding(12, 4, 12, 4)
             layoutParams = LinearLayout.LayoutParams(-1, (50 * resources.displayMetrics.density).toInt()).apply { topMargin = 0; bottomMargin = 4 }
             setOnClickListener { controlClick() }
