@@ -22,7 +22,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var display: TextView
     private lateinit var secondsDisplay: TextView
     private lateinit var status: TextView
-    private lateinit var total: TextView
     private lateinit var control: Button
     private lateinit var voiceButton: Button
     private lateinit var timerRow: LinearLayout
@@ -140,32 +139,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             layoutParams = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        val totalRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(-1, (40 * resources.displayMetrics.density).toInt())
-        }
-
-        total = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.parseColor("#94A3B8"))
-            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-        }
-
-        val reset = Button(this).apply {
-            text = "重置"
-            textSize = 16f
-            setTextColor(Color.parseColor("#6EE7B7"))
-            background = createMintButtonDrawable()
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, -1)
-            setOnClickListener {
-                prefs.edit().putLong(TOTAL, 0).putLong(COUNT, 0).apply()
-                updateUI()
-            }
-        }
-        totalRow.addView(total)
-        totalRow.addView(reset)
-
         voiceButton = Button(this).apply {
             text = "語音設定時間"
             textSize = 18f
@@ -196,7 +169,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setOnClickListener { controlClick() }
         }
 
-        bottom.addView(totalRow)
         bottom.addView(voice)
         bottom.addView(status)
         bottom.addView(control)
@@ -335,10 +307,6 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val s = rem % 60
         display.text = String.format(Locale.TAIWAN, "%02d:", m)
         secondsDisplay.text = String.format(Locale.TAIWAN, "%02d", s)
-
-        val totalSec = prefs.getLong(TOTAL, 0)
-        val count = prefs.getLong(COUNT, 0)
-        total.text = "累計: ${totalSec / 60}分 (${count}次)"
 
         val isIdle = !running && !paused
         voiceButton.isEnabled = isIdle
