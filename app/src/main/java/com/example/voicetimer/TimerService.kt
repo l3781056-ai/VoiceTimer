@@ -18,6 +18,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     private var ring: Ringtone? = null
     private val tickerHandler = Handler(Looper.getMainLooper())
     private var tickerRunnable: Runnable? = null
+    private var alarmCheckRunnable: Runnable? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     companion object {
@@ -200,6 +201,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun stopAlarm() {
+        stopAlarmMonitor()
         ring?.stop()
         ring = null
         tts?.stop()
@@ -236,6 +238,11 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     private fun stopTicker() {
         tickerRunnable?.let { tickerHandler.removeCallbacks(it) }
         tickerRunnable = null
+    }
+
+    private fun stopAlarmMonitor() {
+        alarmCheckRunnable?.let { tickerHandler.removeCallbacks(it) }
+        alarmCheckRunnable = null
     }
 
     private fun schedule(n: Long) {
@@ -333,6 +340,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
 
     private fun cancelAll() {
         stopTicker()
+        stopAlarmMonitor()
         cancelReminder()
         cancelClock()
         val am = getSystemService(ALARM_SERVICE) as AlarmManager
@@ -415,6 +423,25 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
             else -> RingtoneManager.TYPE_ALARM
         }
         play(type)
+        stopAlarmMonitor()
+        alarmCheckRunnable = object : Runnable {
+            override fun run() {
+                val p = prefs()
+                val isAlarming = p.getBoolean(ALARM, false)
+                val isRingPlaying = ring?.isPlaying == true
+                val isTtsSpeaking = tts?.isSpeaking == true
+
+                if (isAlarming && !isRingPlaying && !isTtsSpeaking) {
+                    stopAlarm()
+                } else if (isAlarming) {
+                    tickerHandler.postDelayed(this, 500)
+                }
+            }
+        }
+        tickerHandler.postDelayed(alarmCheckRunnable!!, 1500)
+
+        val am = getSystemService(ALARM_SERVICE) as AlarmManager
+        setExact(am, SystemClock.elapsedRealtime() + 30000L, pending(ACTION_ALARM_STOP, AR))
     }
 
     private fun notifySound() = play(RingtoneManager.TYPE_NOTIFICATION)
@@ -443,6 +470,7 @@ class TimerService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        stopAlarmMonitor()
         ring?.stop()
         tts?.stop()
         tts?.shutdown()
